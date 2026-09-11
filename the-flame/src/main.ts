@@ -3,6 +3,7 @@ import { FLAME_VISUAL } from './data/flameVisualData';
 import { GROWTH } from './data/growthData';
 import { PROGRESSION } from './data/progressionData';
 import { capabilitiesForLevel } from './data/scaleData';
+import { formForLevel } from './data/evolutionData';
 import { WORLD } from './data/worldData';
 import { MatterRegistry } from './systems/MatterRegistry';
 import { WorldManager } from './systems/WorldManager';
@@ -208,24 +209,31 @@ class FlameScene extends Phaser.Scene {
     const heatStretch = 1 + this.heat * 0.12;
     const flameAlpha = 0.84 + this.heat * 0.13;
 
+    const form = formForLevel(this.level);
+    const settledColor = Phaser.Display.Color.Interpolate.ColorWithColor(
+      Phaser.Display.Color.ValueToColor(form.base),
+      Phaser.Display.Color.ValueToColor(form.calm),
+      100,
+      Math.round(this.stability * 100)
+    );
+    const evolvedColor = Phaser.Display.Color.Interpolate.ColorWithColor(
+      Phaser.Display.Color.ValueToColor(settledColor.color),
+      Phaser.Display.Color.ValueToColor(form.hot),
+      100,
+      Math.round(this.heat * 100)
+    ).color;
+
     this.flame.setRadius(this.flameSize * wobble);
     this.flame.setAlpha(flameAlpha);
     this.flame.setPosition(this.flame.x, this.flame.y);
-    this.flame.setFillStyle(
-      Phaser.Display.Color.Interpolate.ColorWithColor(
-        Phaser.Display.Color.ValueToColor(FLAME_VISUAL.palette.orange),
-        Phaser.Display.Color.ValueToColor(FLAME_VISUAL.palette.gold),
-        100,
-        Math.round(this.heat * 100)
-      ).color,
-      flameAlpha
-    );
+    this.flame.setFillStyle(evolvedColor, flameAlpha);
 
     this.core.setPosition(this.flame.x, this.flame.y);
     this.core.setSize(
       this.flameSize * 0.72 * (1 + speed * 0.3),
       this.flameSize * 1.25 * heatStretch
     );
+    this.core.setFillStyle(Phaser.Display.Color.ValueToColor(evolvedColor).lighten(35).color, 0.82);
     this.core.setAlpha(0.76 + this.heat * 0.2);
     this.core.rotation = currentDirection + Math.PI / 2;
 
