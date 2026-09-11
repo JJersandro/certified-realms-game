@@ -206,18 +206,10 @@ class FlameScene extends Phaser.Scene {
 
     this.controlMode = 'gyroscope';
     button.setText('TILT: ON');
-
-    // most desktops define DeviceOrientationEvent but never fire it (no
-    // sensor) -- if nothing arrives shortly, steering would otherwise go
-    // dead, so fall back to touch automatically instead.
-    this.time.delayedCall(TILT_CONTROL.fallbackTimeoutMs, () => {
-      if(this.controlMode === 'gyroscope' && !this.tilt.hasBaseline){
-        this.tilt.disable();
-        this.controlMode = 'touch';
-        button.setText('TILT: N/A');
-        this.time.delayedCall(1200, () => { if(this.controlMode === 'touch') button.setText('TILT: OFF'); });
-      }
-    });
+    // no per-enable fallback timer here -- update() checks
+    // this.tilt.msSinceLastEvent() every frame and reverts to touch if the
+    // sensor never starts (or later stops) delivering events, covering both
+    // "no sensor" and "sensor went stale mid-session" with one check.
   }
 
   tryLevelUp(){
@@ -342,12 +334,24 @@ class FlameScene extends Phaser.Scene {
   update(t:number, dt:number){
     const dtS = dt / 1000;
 
-    if(this.controlMode === 'gyroscope' && this.tilt.hasBaseline){
-      const steer = this.tilt.read(TILT_CONTROL.maxTiltDegrees);
-      this.target.set(
-        this.flame.x + steer.x * TILT_CONTROL.lookaheadPx,
-        this.flame.y + steer.y * TILT_CONTROL.lookaheadPx
-      );
+    if(this.controlMode === 'gyroscope'){
+      // checked every frame, not just once after enabling -- a sensor that
+      // stops delivering events mid-session (permission revoked, OS
+      // suspends it on background/foreground) would otherwise leave
+      // steering permanently frozen with no recovery.
+      if(this.tilt.msSinceLastEvent() > TILT_CONTROL.fallbackTimeoutMs){
+        this.tilt.disable();
+        this.controlMode = 'touch';
+        const button = this.children.getByName('tiltButton') as Phaser.GameObjects.Text | null;
+        button?.setText('TILT: N/A');
+        this.time.delayedCall(1200, () => { if(this.controlMode === 'touch') button?.setText('TILT: OFF'); });
+      } else if(this.tilt.hasBaseline){
+        const steer = this.tilt.read(TILT_CONTROL.maxTiltDegrees);
+        this.target.set(
+          this.flame.x + steer.x * TILT_CONTROL.lookaheadPx,
+          this.flame.y + steer.y * TILT_CONTROL.lookaheadPx
+        );
+      }
     }
 
     const desired = new Phaser.Math.Vector2(

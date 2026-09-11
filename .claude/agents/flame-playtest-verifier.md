@@ -154,6 +154,20 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    ```
    Clean up any temp driver scripts you placed in a global `node_modules` directory -- don't
    leave stray files there.
+8. **Testing gyroscope/tilt control**: click the `TILT` button (bottom-left, screen-space fixed
+   via `scrollFactor(0)`, so its coordinates don't move with the camera) with
+   `page.mouse.click()`. In this container's headless Chromium, `DeviceOrientationEvent` exists
+   (so `enable()` resolves `granted`) but **no event ever actually fires** -- not even a spurious
+   one. That means `TiltControl.hasBaseline` never becomes true and `msSinceLastEvent()` stays
+   `Infinity` from the moment tilt is enabled, so the auto-revert-to-touch fallback (checked every
+   frame in `update()`, comparing against `TILT_CONTROL.fallbackTimeoutMs`) fires on literally the
+   next frame rather than waiting out the timeout -- expect the button to read `TILT: N/A` almost
+   immediately after clicking, then `TILT: OFF` ~1200ms later. That's correct behavior, not a
+   bug: there's no way to synthesize a real `deviceorientation` event from Playwright here to
+   test the "steers correctly while tilted" path, so tilt verification in this environment is
+   necessarily limited to confirming the no-sensor fallback path (enable -> auto-revert -> normal
+   touch/pointer steering resumes cleanly afterward) -- report it as such rather than claiming the
+   actual tilt-steering math was exercised.
 
 ## Report
 
