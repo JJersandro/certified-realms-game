@@ -8,12 +8,12 @@ import { WORLD } from './data/worldData';
 import { TILT_CONTROL } from './data/tiltData';
 import { RISK } from './data/riskData';
 import { ENDGAME } from './data/endgameData';
-import { SKILL_TREE, SkillNode } from './data/skillTreeData';
+import { SKILL_TREE } from './data/skillTreeData';
 import { MatterRegistry } from './systems/MatterRegistry';
 import { WorldManager } from './systems/WorldManager';
 import { TiltControl } from './systems/TiltControl';
 import { SkillTreeManager } from './systems/SkillTreeManager';
-import { toDisplayNumber } from './util/displayNumber';
+import { UIScene } from './scenes/UIScene';
 
 type ControlMode = 'touch' | 'gyroscope';
 
@@ -58,8 +58,6 @@ class FlameScene extends Phaser.Scene {
   skillTree = new SkillTreeManager();
   worldStrength = 1.0;
   worldsCleared = 0;
-  skillTreeListOpen = false;
-  skillTreeLines: Phaser.GameObjects.Text[] = [];
 
   constructor(){ super('flame'); }
 
@@ -117,48 +115,31 @@ class FlameScene extends Phaser.Scene {
 
     this.cameras.main.startFollow(this.flame, true, 0.09, 0.09);
 
-    const tiltButton = this.add.text(24, this.scale.height - 32, 'TILT: OFF', {
-      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
-    }).setScrollFactor(0).setDepth(10).setAlpha(.6).setName('tiltButton')
-      .setInteractive({ useHandCursor: true });
-
-    tiltButton.on('pointerdown', () => this.toggleControlMode(tiltButton));
-
-    this.createSkillTreeUI();
-
     const aimAt = (p: Phaser.Input.Pointer) => {
       if(this.controlMode !== 'touch') return;
-      if(Phaser.Geom.Rectangle.Contains(tiltButton.getBounds(), p.x, p.y)) return;
-      const skillButton = this.children.getByName('skillTreeButton') as Phaser.GameObjects.Text | null;
-      if(skillButton?.visible && Phaser.Geom.Rectangle.Contains(skillButton.getBounds(), p.x, p.y)) return;
-      if(this.skillTreeListOpen){
-        for(const line of this.skillTreeLines){
-          if(line.visible && Phaser.Geom.Rectangle.Contains(line.getBounds(), p.x, p.y)) return;
-        }
-      }
+      // Deliberate narrow exception to the event-only cross-scene rule: a
+      // synchronous per-pointer-event hit test against UIScene's HUD chrome
+      // has no natural fit as a discrete event, and Phaser does not stop
+      // this scene's own pointermove/pointerdown listener just because
+      // UIScene's interactive objects sit visually on top of it -- these
+      // are two independent listeners on two scenes' input plugins, not one
+      // bubbling chain. A full event round-trip here would be needless
+      // complexity for a same-frame geometry query.
+      if((this.scene.get('ui') as UIScene).isPointOverUI(p.x, p.y)) return;
       const world = this.cameras.main.getWorldPoint(p.x, p.y);
       this.target.set(world.x, world.y);
     };
     this.input.on('pointermove', aimAt);
     this.input.on('pointerdown', aimAt);
 
-    this.add.text(24, 22, 'THE FLAME', {
-      fontFamily:'Inter, sans-serif', fontSize:'12px', color:'#ffffff'
-    }).setScrollFactor(0).setDepth(10).setAlpha(.72);
+    this.game.events.on('ui:requestToggleControlMode', () => this.toggleControlMode());
+    this.game.events.on('ui:requestPurchase', ({ nodeId }: { nodeId: string }) => {
+      const node = SKILL_TREE.find(n => n.id === nodeId);
+      if(!node) return;
+      if(this.skillTree.purchase(node)) this.emitSkillTreeChanged();
+    });
 
-    this.add.text(24, 43, 'move • touch • burn • grow', {
-      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
-    }).setScrollFactor(0).setDepth(10).setAlpha(.34);
-
-    this.add.text(this.scale.width - 24, 22, capabilitiesForLevel(this.level).name, {
-      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(.65).setName('stage');
-
-    this.add.text(this.scale.width - 24, 43, `LV ${toDisplayNumber(this.level)}`, {
-      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(.5).setName('level');
-
-    this.scale.on('resize', ()=>this.layout());
+    this.scene.launch('ui');
   }
 
   createFlameBody(){
@@ -216,24 +197,35 @@ class FlameScene extends Phaser.Scene {
     }
   }
 
-  async toggleControlMode(button: Phaser.GameObjects.Text){
+  emitLevelChanged(){
+    this.game.events.emit('ui:levelChanged', {
+      level: this.level,
+      stageName: capabilitiesForLevel(this.level).name
+    });
+  }
+
+  emitControlModeChanged(label: string){
+    this.game.events.emit('ui:controlModeChanged', { label });
+  }
+
+  async toggleControlMode(){
     if(this.controlMode === 'gyroscope'){
       this.tilt.disable();
       this.controlMode = 'touch';
-      button.setText('TILT: OFF');
+      this.emitControlModeChanged('TILT: OFF');
       return;
     }
 
-    button.setText('TILT: …');
+    this.emitControlModeChanged('TILT: …');
     const granted = await this.tilt.enable();
     if(!granted){
-      button.setText('TILT: N/A');
-      this.time.delayedCall(1200, () => { if(this.controlMode === 'touch') button.setText('TILT: OFF'); });
+      this.emitControlModeChanged('TILT: N/A');
+      this.time.delayedCall(1200, () => { if(this.controlMode === 'touch') this.emitControlModeChanged('TILT: OFF'); });
       return;
     }
 
     this.controlMode = 'gyroscope';
-    button.setText('TILT: ON');
+    this.emitControlModeChanged('TILT: ON');
     // no per-enable fallback timer here -- update() checks
     // this.tilt.msSinceLastEvent() every frame and reverts to touch if the
     // sensor never starts (or later stops) delivering events, covering both
@@ -241,6 +233,7 @@ class FlameScene extends Phaser.Scene {
   }
 
   tryLevelUp(){
+    const before = this.level;
     while(this.level < PROGRESSION.totalLevels){
       const nextLevel = this.level + 1;
       const hasXp = this.energy >= PROGRESSION.xpForLevel(nextLevel);
@@ -248,15 +241,18 @@ class FlameScene extends Phaser.Scene {
       if(!hasXp || !hasSize) break;
       this.level = nextLevel;
     }
+    if(this.level !== before) this.emitLevelChanged();
   }
 
   // mirrors tryLevelUp() going the other way -- shrinking (see update())
   // below a level's own size requirement demotes it, re-gating whatever
   // matter/capabilities that level had unlocked.
   tryLevelDown(){
+    const before = this.level;
     while(this.level > 1 && this.flameSize < PROGRESSION.minFlameSizeForLevel(this.level)){
       this.level--;
     }
+    if(this.level !== before) this.emitLevelChanged();
   }
 
   // Phase 11: event-driven (called from onFuelBurned, same pattern as
@@ -293,71 +289,21 @@ class FlameScene extends Phaser.Scene {
     // the world's fuel/matter resets and gets tougher.
     this.world.regenerate(this.worldStrength);
 
-    if(!wasUnlocked) this.revealSkillTreeUI();
-    this.refreshSkillTreeUI();
+    if(!wasUnlocked) this.game.events.emit('ui:skillTreeUnlocked');
+    this.emitSkillTreeChanged();
   }
 
-  createSkillTreeUI(){
-    const button = this.add.text(this.scale.width - 24, this.scale.height - 32, 'SKILL TREE: 0 PTS', {
-      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(.6).setName('skillTreeButton')
-      .setInteractive({ useHandCursor: true }).setVisible(false);
-
-    button.on('pointerdown', () => this.toggleSkillTreeList());
-
-    for(const node of SKILL_TREE){
-      const line = this.add.text(this.scale.width - 24, this.scale.height - 32, '', {
-        fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
-      }).setOrigin(1, 0).setScrollFactor(0).setDepth(10)
-        .setInteractive({ useHandCursor: true }).setVisible(false);
-      line.on('pointerdown', () => this.trySkillPurchase(node));
-      this.skillTreeLines.push(line);
-    }
-
-    this.layoutSkillTreeUI();
-  }
-
-  revealSkillTreeUI(){
-    (this.children.getByName('skillTreeButton') as Phaser.GameObjects.Text | null)?.setVisible(true);
-  }
-
-  toggleSkillTreeList(){
-    this.skillTreeListOpen = !this.skillTreeListOpen;
-    this.refreshSkillTreeUI();
-  }
-
-  trySkillPurchase(node: SkillNode){
-    if(this.skillTree.purchase(node)) this.refreshSkillTreeUI();
-  }
-
-  refreshSkillTreeUI(){
-    const button = this.children.getByName('skillTreeButton') as Phaser.GameObjects.Text | null;
-    if(!button || !this.skillTree.unlocked) return;
-
-    button.setText(`SKILL TREE: ${toDisplayNumber(this.skillTree.points)} PTS`);
-
-    SKILL_TREE.forEach((node, i) => {
-      const line = this.skillTreeLines[i];
-      const owned = this.skillTree.purchased.has(node.id);
-      const afford = this.skillTree.canAfford(node);
-
-      line.setText(`${node.name} — ${toDisplayNumber(node.cost)}${owned ? ' (owned)' : ''}`);
-      line.setVisible(this.skillTreeListOpen);
-      line.setAlpha(owned ? 0.35 : afford ? 0.9 : 0.45);
-      line.setColor(owned ? '#7fffb0' : afford ? '#ffb347' : '#888888');
+  emitSkillTreeChanged(){
+    this.game.events.emit('ui:skillTreeChanged', {
+      points: this.skillTree.points,
+      nodes: SKILL_TREE.map(n => ({
+        id: n.id,
+        name: n.name,
+        cost: n.cost,
+        owned: this.skillTree.purchased.has(n.id),
+        afford: this.skillTree.canAfford(n)
+      }))
     });
-  }
-
-  layoutSkillTreeUI(){
-    const button = this.children.getByName('skillTreeButton') as Phaser.GameObjects.Text | null;
-    if(!button) return;
-
-    button.setPosition(this.scale.width - 24, this.scale.height - 32);
-
-    for(let i = 0; i < this.skillTreeLines.length; i++){
-      const fromBottom = this.skillTreeLines.length - i;
-      this.skillTreeLines[i].setPosition(this.scale.width - 24, this.scale.height - 32 - fromBottom * 18);
-    }
   }
 
   createParticles(){
@@ -471,9 +417,8 @@ class FlameScene extends Phaser.Scene {
       if(this.tilt.msSinceLastEvent() > TILT_CONTROL.fallbackTimeoutMs){
         this.tilt.disable();
         this.controlMode = 'touch';
-        const button = this.children.getByName('tiltButton') as Phaser.GameObjects.Text | null;
-        button?.setText('TILT: N/A');
-        this.time.delayedCall(1200, () => { if(this.controlMode === 'touch') button?.setText('TILT: OFF'); });
+        this.emitControlModeChanged('TILT: N/A');
+        this.time.delayedCall(1200, () => { if(this.controlMode === 'touch') this.emitControlModeChanged('TILT: OFF'); });
       } else if(this.tilt.hasBaseline){
         const steer = this.tilt.read(TILT_CONTROL.maxTiltDegrees);
         this.target.set(
@@ -514,21 +459,8 @@ class FlameScene extends Phaser.Scene {
 
     this.matterSystem.updateAll(t, dt);
 
-    const stage = this.children.getByName('stage') as Phaser.GameObjects.Text;
-    stage.setText(capabilitiesForLevel(this.level).name);
-
-    const levelLabel = this.children.getByName('level') as Phaser.GameObjects.Text;
-    levelLabel.setText(`LV ${toDisplayNumber(this.level)}`);
-
     this.particles.setPosition(this.flame.x, this.flame.y);
     if(Math.random() < FLAME_VISUAL.particles.emberChance + this.heat * 0.12) this.particles.explode(1);
-  }
-
-  layout(){
-    (this.children.getByName('stage') as Phaser.GameObjects.Text)?.setPosition(this.scale.width - 24, 22);
-    (this.children.getByName('level') as Phaser.GameObjects.Text)?.setPosition(this.scale.width - 24, 43);
-    (this.children.getByName('tiltButton') as Phaser.GameObjects.Text)?.setPosition(24, this.scale.height - 32);
-    this.layoutSkillTreeUI();
   }
 }
 
@@ -540,5 +472,5 @@ new Phaser.Game({
   backgroundColor:'#080604',
   scale:{mode:Phaser.Scale.RESIZE,width:window.innerWidth,height:window.innerHeight},
   render:{antialias:true,powerPreference:'high-performance'},
-  scene:FlameScene
+  scene:[FlameScene, UIScene]
 });

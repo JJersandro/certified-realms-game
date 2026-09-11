@@ -49,7 +49,27 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    ```
 2. **Drive it.** This game has no DOM UI beyond a few canvas-rendered text labels -- everything
    is `page.mouse.move(x, y)` to steer the flame, `page.waitForTimeout()` between moves, and
-   screenshots to inspect state. Things to get right:
+   screenshots to inspect state. Since Phase 12, the HUD (title/subtitle, stage/level labels,
+   TILT button, skill tree button + lines) is rendered by a second running scene, `UIScene`
+   ('ui'), launched in parallel with `FlameScene` ('flame') via `this.scene.launch('ui')` --
+   Phaser still draws both scenes to the one `<canvas>`, so every `page.mouse.click()`/
+   `page.mouse.move()` against screen coordinates and every screenshot works exactly the same as
+   before. The only thing that changes is where to look when inspecting state via
+   `page.evaluate()`: HUD text objects now live on `window.__game.scene.getScene('ui')`
+   (`stageLabel`, `levelLabel`, `tiltButton`, `skillTreeButton`, `skillTreeLines`), not on the
+   `flame` scene's `this.children` -- gameplay state (`skillTree`, `matterSystem`, `worldStrength`,
+   etc.) still lives on `getScene('flame')` as before. The two scenes talk to each other only via
+   `window.__game.events` (`'ui:levelChanged'`, `'ui:controlModeChanged'`,
+   `'ui:skillTreeUnlocked'`, `'ui:skillTreeChanged'`, `'ui:requestToggleControlMode'`,
+   `'ui:requestPurchase'`). Phase 12 made all HUD updates event-driven, not per-frame -- the good
+   news is `FlameScene`'s own methods (`tryLevelUp`, `checkWorldConsumed`, etc.) already emit the
+   right event as part of their normal work, so calling them directly via `page.evaluate()` (e.g.
+   the Phase 11 world-clear technique below) still updates the HUD correctly with no extra step.
+   Only reach for `scene.emitLevelChanged()`/`scene.emitSkillTreeChanged()` manually if you
+   mutate state (`scene.level`, `scene.skillTree.points`, etc.) directly via `page.evaluate()`
+   without going through the method that normally emits for it -- a label that looks stale after
+   such a direct field mutation is expected, not a bug, since nothing is polling it every frame
+   anymore. Things to get right:
    - **The flame starts in a fuel-free safe zone.** Fuel never spawns within 120px of the
      flame's starting position, so hovering near center proves nothing. Sweep the pointer
      across the *whole* canvas (a grid pattern covering most of the viewport) to actually reach
@@ -176,8 +196,13 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    bottom-left), `page.mouse.click()` on it toggles a vertical list of the 7 node names + costs
    above it, and clicking an affordable line's bounds (from `line.getBounds()`) actually purchases
    it -- check the line's own text flips to include "(owned)" and its color/alpha changes,
-   confirming the click-guard in the shared `pointerdown`/`aimAt` handler is correctly excluding
-   these new elements from steering the flame (the flame should not move when these are clicked).
+   confirming the click-guard in `FlameScene.aimAt` is correctly excluding these `UIScene`
+   elements from steering the flame (the flame should not move when these are clicked). Since
+   Phase 12, that guard is a single cross-scene call --
+   `(this.scene.get('ui') as UIScene).isPointOverUI(p.x, p.y)` -- rather than three separate
+   `Rectangle.Contains` checks inline in `FlameScene`, so this observable behavior (no steering
+   when tapping HUD chrome) is what actually proves the guard still works, not any particular
+   internal implementation.
 9. **Testing gyroscope/tilt control**: click the `TILT` button (bottom-left, screen-space fixed
    via `scrollFactor(0)`, so its coordinates don't move with the camera) with
    `page.mouse.click()`. In this container's headless Chromium, `DeviceOrientationEvent` exists

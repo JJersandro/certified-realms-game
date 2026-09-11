@@ -47,7 +47,14 @@ around the discrepancy silently.
    is a more realistic way to hit a large scorch count than Phase 4-10 assumed. `SkillTreeManager`
    itself is not a growth risk (`purchased` is a `Set` capped at 7 possible entries, one per
    node), but confirm nothing about the skill tree HUD (button + up to 7 line objects, created
-   once in `createSkillTreeUI()`) is being recreated per-frame or per-clear rather than reused.
+   once in `UIScene.create()`) is being recreated per-frame or per-clear rather than reused. Since
+   Phase 12, this HUD (and the rest of the game's text/buttons) lives in a second scene, `UIScene`,
+   launched alongside `FlameScene` via `this.scene.launch('ui')` and driven by `this.game.events`
+   pushes -- confirm the event payloads aren't a growth risk either (e.g. `'ui:skillTreeChanged'`'s
+   `nodes` array is rebuilt fresh from the fixed 7-entry `SKILL_TREE` on every emit, not
+   accumulated) and that two running scenes doesn't itself add meaningful per-frame overhead
+   (`UIScene` has no `update()` loop of its own -- it is purely event-reactive, so this should be
+   close to free, but confirm rather than assume if instance counts climb further).
 3. **Touch input correctness.** Phaser's `pointermove`/`pointerdown` already unify mouse and
    touch, but verify on an actual touch-emulated viewport (Playwright's `page.emulate` or a
    touch-capable device profile) that: the flame follows a finger drag smoothly, there's no

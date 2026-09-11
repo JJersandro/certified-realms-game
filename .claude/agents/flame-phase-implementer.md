@@ -32,9 +32,27 @@ read it first if pointed to one.
   stay a pure state+query object. Extract a new system class when a phase introduces a new
   *category* of state (e.g. a `ChoiceManager` for Phase 8) rather than bolting more fields onto
   `FlameScene`.
-- **Single scene until Phase 12**: `FlameScene` in `main.ts` is the only Phaser Scene until the
-  UI/UX refinement phase, which is where a second `UIScene` is introduced. Don't add a Scene
-  earlier than that unless the phase you're implementing is that one.
+- **Two scenes, communicating only through `this.game.events`**: Phase 12 introduced `UIScene`
+  (`src/scenes/UIScene.ts`), which owns every manually-positioned HUD text object/button
+  (title/subtitle, stage/level labels, TILT button, skill tree button + node lines) that used to
+  live directly on `FlameScene`. `FlameScene.create()` starts it with `this.scene.launch('ui')`
+  so both run in parallel for the whole session (`scene: [FlameScene, UIScene]` in the `Phaser.
+  Game` config, `UIScene` second so it renders on top). The two scenes never reach into each
+  other's `this.children` or call each other's methods directly -- `FlameScene` pushes state
+  changes as `game.events.emit('ui:xChanged', payload)` only when the value actually changes
+  (not every frame -- e.g. `tryLevelUp`/`tryLevelDown` compare level before/after and only emit
+  on a real change), and `UIScene` pushes user intent back as `game.events.emit('ui:requestX',
+  payload)`, with `FlameScene` owning the actual state mutation and echoing back a fresh
+  `'ui:xChanged'` on success. A purely cosmetic UI toggle with no gameplay effect (the skill-tree
+  list's open/closed state) is handled entirely inside `UIScene` with no round-trip event at all
+  -- not every UI interaction needs to cross the scene boundary. The one deliberate exception to
+  "communicate via events only" is `UIScene.isPointOverUI(x, y)`, a synchronous public method
+  `FlameScene.aimAt` calls directly (via `this.scene.get('ui')`) to hit-test HUD chrome before
+  steering the flame -- a same-frame geometry query has no natural fit as a discrete event, and
+  this is documented as intentional with a comment at the call site. Don't add a third Scene, and
+  don't invent a different cross-scene mechanism (no store, no singleton, no scene data manager)
+  without a comparably strong reason -- this event-bus shape is now the established pattern for
+  any future scene-to-scene communication.
 - **One tier, one row of data**: Phase 6 explicitly chose to fold speed/reach capability gates
   into the *same* 7-tier/77-level system Phase 4 built for matter ignition, rather than
   introducing a second, parallel size-based tier concept (`scaleData.ts`'s `SCALE.tierCapabilities`
