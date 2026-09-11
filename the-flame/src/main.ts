@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { FLAME_VISUAL } from './data/flameVisualData';
 import { BURNING } from './data/burningData';
+import { GROWTH } from './data/growthData';
 
 type BurnState = 'idle' | 'burning';
 
@@ -33,8 +34,11 @@ class FlameScene extends Phaser.Scene {
   core!: Phaser.GameObjects.Ellipse;
   target = new Phaser.Math.Vector2();
   velocity = new Phaser.Math.Vector2();
-  flameSize = 9;
+  lastDirection = 0;
+  flameSize = GROWTH.baseFlameSize;
   energy = 0;
+  heat = 0;
+  stability = 1;
   burned = 0;
   fuels: Fuel[] = [];
   ribbons: Ribbon[] = [];
@@ -189,6 +193,7 @@ class FlameScene extends Phaser.Scene {
     fuel.visual.setAlpha(0.42);
     fuel.burnVisual.setAlpha(BURNING.burnPulse.alpha);
     fuel.burnVisual.setScale(0.75);
+    this.heat = Math.min(GROWTH.maxHeat, this.heat + 0.08);
     this.particles.setPosition(fuel.x, fuel.y);
     this.particles.explode(Phaser.Math.Between(BURNING.emberBurst.min, Math.min(BURNING.emberBurst.max, 8)));
   }
@@ -200,7 +205,11 @@ class FlameScene extends Phaser.Scene {
     fuel.burnState = 'idle';
     this.energy += fuel.energy;
     this.burned++;
-    this.flameSize = Math.min(72, 9 + Math.sqrt(this.energy) * 0.55);
+    this.flameSize = Math.min(
+      GROWTH.maxFlameSize,
+      GROWTH.baseFlameSize + Math.sqrt(this.energy) * GROWTH.sizeEnergyFactor
+    );
+    this.heat = Math.min(GROWTH.maxHeat, this.heat + fuel.r / 22);
 
     this.particles.setPosition(fuel.x, fuel.y);
     this.particles.explode(Phaser.Math.Clamp(Math.floor(fuel.r * 2.2), BURNING.emberBurst.min, BURNING.emberBurst.max));
@@ -247,6 +256,11 @@ class FlameScene extends Phaser.Scene {
     fuel.burnVisual.setScale((0.75 + progress * 0.7) * pulse);
     fuel.burnVisual.setAlpha(BURNING.burnPulse.alpha + progress * 0.2);
 
+    this.heat = Math.min(
+      GROWTH.maxHeat,
+      this.heat + (GROWTH.heatRisePerBurnSecond * dt) / 1000
+    );
+
     this.particles.setPosition(fuel.x, fuel.y);
     if(Math.random() < 0.15 + progress * 0.16) this.particles.explode(1);
 
@@ -254,39 +268,73 @@ class FlameScene extends Phaser.Scene {
   }
 
   updateFlameVisual(t:number){
-    const wobble = 1 + Math.sin(t * 0.012) * 0.09 + Math.sin(t * 0.027) * 0.045;
-    const direction = Math.atan2(this.velocity.y, this.velocity.x || 1);
+    const currentDirection = Math.atan2(this.velocity.y, this.velocity.x || 1);
+    let directionDelta = Phaser.Math.Angle.Wrap(currentDirection - this.lastDirection);
+    if(Math.abs(directionDelta) > Math.PI) directionDelta = 0;
+
+    this.stability = Phaser.Math.Clamp(
+      this.stability - Math.abs(directionDelta) * GROWTH.instabilityFromDirectionChange * 0.01,
+      GROWTH.minStability,
+      GROWTH.maxStability
+    );
+
+    this.stability = Phaser.Math.Clamp(
+      this.stability + 0.016 * GROWTH.stabilityRecoveryPerSecond,
+      GROWTH.minStability,
+      GROWTH.maxStability
+    );
+    this.lastDirection = currentDirection;
+
+    const wobble = 1
+      + Math.sin(t * 0.012) * (0.06 + (1 - this.stability) * 0.08)
+      + Math.sin(t * 0.027) * 0.035;
     const speed = Phaser.Math.Clamp(this.velocity.length() / 180, 0, 1);
+    const heatStretch = 1 + this.heat * 0.12;
+    const flameAlpha = 0.84 + this.heat * 0.13;
 
     this.flame.setRadius(this.flameSize * wobble);
+    this.flame.setAlpha(flameAlpha);
     this.flame.setPosition(this.flame.x, this.flame.y);
+    this.flame.setFillStyle(
+      Phaser.Display.Color.Interpolate.ColorWithColor(
+        Phaser.Display.Color.ValueToColor(FLAME_VISUAL.palette.orange),
+        Phaser.Display.Color.ValueToColor(FLAME_VISUAL.palette.gold),
+        100,
+        Math.round(this.heat * 100)
+      ).color,
+      flameAlpha
+    );
+
     this.core.setPosition(this.flame.x, this.flame.y);
     this.core.setSize(
       this.flameSize * 0.72 * (1 + speed * 0.3),
-      this.flameSize * 1.25 * (1 + speed * 0.15)
+      this.flameSize * 1.25 * heatStretch
     );
-    this.core.rotation = direction + Math.PI / 2;
+    this.core.setAlpha(0.76 + this.heat * 0.2);
+    this.core.rotation = currentDirection + Math.PI / 2;
+
     this.halo
       .setPosition(this.flame.x, this.flame.y)
-      .setRadius(this.flameSize * (2.0 + 0.22 * Math.sin(t * 0.008)))
-      .setAlpha(Math.min(0.15, 0.035 + this.flameSize / 700));
+      .setRadius(this.flameSize * (2.0 + 0.28 * this.heat + 0.22 * Math.sin(t * 0.008)))
+      .setAlpha(Math.min(0.19, 0.035 + this.flameSize / 700 + this.heat * 0.05));
 
     for(const ribbon of this.ribbons){
       const s = Math.sin(t * ribbon.speed + ribbon.phase);
       const c = Math.cos(t * ribbon.speed * 0.73 + ribbon.phase * 0.8);
-      const stretch = 1 + speed * FLAME_VISUAL.motion.stretch * 0.18;
+      const stretch = 1 + speed * FLAME_VISUAL.motion.stretch * 0.18 + this.heat * 0.16;
+      const instability = 1 + (1 - this.stability) * 0.28;
 
       ribbon.visual.setPosition(
-        this.flame.x + s * this.flameSize * FLAME_VISUAL.motion.swayAmplitude * (0.7 + speed),
-        this.flame.y - c * this.flameSize * 0.22
+        this.flame.x + s * this.flameSize * FLAME_VISUAL.motion.swayAmplitude * (0.7 + speed) * instability,
+        this.flame.y - c * this.flameSize * (0.22 + this.heat * 0.08)
       );
 
       ribbon.visual.setSize(
-        this.flameSize * (0.38 + ribbon.width * 0.05),
+        this.flameSize * (0.38 + ribbon.width * 0.05) * (1 + this.heat * 0.08),
         this.flameSize * (1.45 + ribbon.height * 0.15) * stretch
       );
-      ribbon.visual.rotation = direction + Math.PI / 2 + s * 0.32;
-      ribbon.visual.setAlpha(Math.min(0.34, ribbon.alpha + this.flameSize / 5000));
+      ribbon.visual.rotation = currentDirection + Math.PI / 2 + s * (0.28 + this.heat * 0.1);
+      ribbon.visual.setAlpha(Math.min(0.38, ribbon.alpha + this.flameSize / 5000 + this.heat * 0.05));
     }
   }
 
@@ -305,6 +353,7 @@ class FlameScene extends Phaser.Scene {
     this.flame.x = Phaser.Math.Clamp(this.flame.x + this.velocity.x * dtS, 10, this.scale.width - 10);
     this.flame.y = Phaser.Math.Clamp(this.flame.y + this.velocity.y * dtS, 65, this.scale.height - 10);
 
+    this.heat = Math.max(0, this.heat - GROWTH.heatDecayPerSecond * dtS);
     this.updateFlameVisual(t);
 
     for(const fuel of this.fuels) this.updateFuel(fuel, t, dt);
@@ -319,7 +368,7 @@ class FlameScene extends Phaser.Scene {
     );
 
     this.particles.setPosition(this.flame.x, this.flame.y);
-    if(Math.random() < FLAME_VISUAL.particles.emberChance) this.particles.explode(1);
+    if(Math.random() < FLAME_VISUAL.particles.emberChance + this.heat * 0.12) this.particles.explode(1);
   }
 
   layout(){
