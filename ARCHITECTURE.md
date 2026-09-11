@@ -1,7 +1,7 @@
 # Flame Game — Architecture Baseline
 
 ## Current technical baseline
-The repository currently contains a Next.js application with a client-side game screen and a server API route. The existing route calls Gemini first and Groq as fallback. The current implementation is prototype-level and is not yet the canonical architecture. fileciteturn3file0 fileciteturn4file0
+The repository currently contains a Next.js application with a client-side game screen and a server API route. The existing route calls Gemini first and Groq as fallback. The current implementation is prototype-level and is not yet the canonical architecture.
 
 ## Target boundaries
 
