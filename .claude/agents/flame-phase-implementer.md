@@ -18,11 +18,15 @@ read it first if pointed to one.
   `progressionData.ts`), separate from scene/system logic. New phases add new files here, not
   more hardcoded literals in scene code.
 - **Systems extraction**: cross-cutting gameplay logic that isn't pure rendering gets its own
-  class under `the-flame/src/systems/` (see `MatterRegistry.ts` for the pattern -- it owns an
-  array of entities and is driven by a small `Host` interface of callbacks into `FlameScene`,
-  rather than reading/writing `FlameScene` fields directly). Extract a new system class when a
-  phase introduces a new *category* of state (e.g. a `WorldManager` for Phase 5, a
-  `ChoiceManager` for Phase 8) rather than bolting more fields onto `FlameScene`.
+  class under `the-flame/src/systems/`. Two examples now exist, and they show two valid shapes:
+  `MatterRegistry.ts` owns an array of entities and is driven by a small `Host` interface of
+  callbacks into `FlameScene` (used when the system needs to call back into scene state like
+  heat/energy); `WorldManager.ts` (Phase 5) instead takes a narrower dependency directly in its
+  constructor (`MatterRegistry`) since it only needs to drive spawning, not read scene state.
+  Prefer the narrowest dependency that works -- don't reach for a full `Host` interface if the
+  system only needs one collaborator. Extract a new system class when a phase introduces a new
+  *category* of state (e.g. a `ChoiceManager` for Phase 8) rather than bolting more fields onto
+  `FlameScene`.
 - **Single scene until Phase 12**: `FlameScene` in `main.ts` is the only Phaser Scene until the
   UI/UX refinement phase, which is where a second `UIScene` is introduced. Don't add a Scene
   earlier than that unless the phase you're implementing is that one.

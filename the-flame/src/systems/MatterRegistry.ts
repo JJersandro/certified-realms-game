@@ -32,34 +32,39 @@ export type MatterHost = {
   onFuelBurned: (xpYield: number) => void;
 };
 
-const totalSpawnWeight = MATTER.reduce((sum, tier) => sum + tier.spawnWeight, 0);
+const defaultSpawnWeights = MATTER.map(tier => tier.spawnWeight);
+
+export type SpawnBounds = { x: number; y: number; w: number; h: number };
 
 export class MatterRegistry {
   fuels: Fuel[] = [];
 
   constructor(private host: MatterHost){}
 
-  private pickTier(): MatterTier {
-    let roll = Math.random() * totalSpawnWeight;
-    for(const tier of MATTER){
-      roll -= tier.spawnWeight;
-      if(roll <= 0) return tier;
+  private pickTier(weights: readonly number[]): MatterTier {
+    const total = weights.reduce((sum, w) => sum + w, 0);
+    let roll = Math.random() * total;
+    for(let i = 0; i < MATTER.length; i++){
+      roll -= weights[i];
+      if(roll <= 0) return MATTER[i];
     }
     return MATTER[MATTER.length - 1];
   }
 
-  spawnFuel(){
+  // bounds/weights default to the whole viewport and MATTER's own global
+  // weights (Phase 4 behavior) -- pass a world region's bounds/tierWeights
+  // to spawn scoped to that region instead (see WorldManager).
+  spawnFuel(bounds?: SpawnBounds, weights: readonly number[] = defaultSpawnWeights){
     const scene = this.host.scene;
     const margin = 45;
-    const width = scene.scale.width;
-    const height = scene.scale.height;
-    const x = Phaser.Math.Between(margin, Math.max(margin, width - margin));
-    const y = Phaser.Math.Between(80, Math.max(80, height - margin));
+    const b = bounds ?? { x: 0, y: 0, w: scene.scale.width, h: scene.scale.height };
+    const x = Phaser.Math.Between(b.x + margin, Math.max(b.x + margin, b.x + b.w - margin));
+    const y = Phaser.Math.Between(b.y + margin, Math.max(b.y + margin, b.y + b.h - margin));
 
     const flame = this.host.getFlame();
     if(Phaser.Math.Distance.Between(x, y, flame.x, flame.y) < 120) return;
 
-    const tier = this.pickTier();
+    const tier = this.pickTier(weights);
     const r = Phaser.Math.Between(tier.radiusMin, tier.radiusMax);
     const maxHp = r * tier.maxHpPerRadius;
 

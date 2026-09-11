@@ -49,7 +49,7 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    ```
 2. **Drive it.** This game has no DOM UI beyond a few canvas-rendered text labels -- everything
    is `page.mouse.move(x, y)` to steer the flame, `page.waitForTimeout()` between moves, and
-   screenshots to inspect state. Two things to get right:
+   screenshots to inspect state. Things to get right:
    - **The flame starts in a fuel-free safe zone.** Fuel never spawns within 120px of the
      flame's starting position, so hovering near center proves nothing. Sweep the pointer
      across the *whole* canvas (a grid pattern covering most of the viewport) to actually reach
@@ -57,6 +57,20 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    - **Capture progression, not just one frame.** Take screenshots at multiple points during a
      longer sweep (every N iterations) to see state change over time -- a single early
      screenshot will show nothing but the initial spawn state.
+   - **Since Phase 5, the world is bigger than the viewport and the camera follows the flame.**
+     Pointer coordinates you send are still screen-space (the game converts them to world-space
+     internally via `camera.getWorldPoint`), so `page.mouse.move` still works the same way --
+     but fuel density per screen-area is now deliberately much sparser than Phase 4's flat 180
+     (~150-250 spread across a 4000x3000 world in 4 regions, see `worldData.ts`). A quick grid
+     sweep or a wide spiral can easily find *nothing* in the time budget of a short test -- this
+     happened repeatedly in Phase 5's own verification. The reliable technique: take a
+     screenshot first, pick a fuel instance's current on-screen pixel position from it, then
+     dwell the pointer directly on that position (`page.mouse.move` to the same point every
+     iteration) until the flame visibly catches up and ignites it, rather than sweeping blind.
+     To verify camera-follow itself (not just gameplay): steer hard toward one screen edge for
+     several seconds, screenshot, then steer to the opposite edge and screenshot again -- the
+     background fuel visible should be completely different between the two, and the flame
+     should track back toward wherever you're currently aiming both times.
    ```js
    import { chromium } from 'playwright';
    const browser = await chromium.launch({ executablePath: '<PLAYWRIGHT_BROWSERS_PATH>/chromium', args: ['--no-sandbox'] });

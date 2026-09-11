@@ -20,12 +20,18 @@ around the discrepancy silently.
 
 ## What to actually check, in priority order
 
-1. **Frame budget.** `FlameScene.update()` currently does per-fuel work every frame (contact
-   distance checks, HP drain, particle triggers) for however many fuel instances are alive at
-   once. Check the current instance count (see `for(let i=0;i<N;i++) spawnFuel()` or whatever
-   the World-phase spawn logic has become) and estimate the per-frame cost. Flag anything
-   O(n²) (e.g. a naive cascading-ignition proximity check across all burning×idle pairs) before
-   it ships, not after a phone visibly stutters.
+1. **Frame budget.** `FlameScene.update()` -> `MatterRegistry.updateAll()` does per-fuel work
+   every frame (contact distance checks, HP drain, particle triggers) for *every* alive fuel
+   instance in the world, not just what's on screen -- there is no camera-distance culling yet.
+   Since Phase 5, total instance count is no longer one flat constant: it's
+   `sum(region.baseFuelCount * rolled density)` across `WORLD.regions` in `worldData.ts`
+   (currently 4 regions, ~45-65 base each, density 0.5-1.1x -> roughly 150-250 alive at once,
+   spread across a 4000x3000 world well beyond the ~1024x700 viewport). Check the current
+   totals against that formula and estimate per-frame cost. Now that the world is bigger than
+   the viewport, distance-from-camera culling (skip or coarsen updates for fuel far outside the
+   visible area) is a real, concrete optimization to consider -- flag it explicitly if instance
+   counts climb further in later phases. Also flag anything O(n²) (e.g. a naive
+   cascading-ignition proximity check across all burning×idle pairs) before it ships.
 2. **Unbounded growth.** `this.scorches` (persistent burn-mark array) grows forever with no cap
    or pooling -- confirm whether this has been addressed yet (it was flagged as a known Phase 14
    item) and whether anything *else* added since has the same shape (an array that only grows,

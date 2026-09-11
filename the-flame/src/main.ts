@@ -2,7 +2,9 @@ import Phaser from 'phaser';
 import { FLAME_VISUAL } from './data/flameVisualData';
 import { GROWTH } from './data/growthData';
 import { PROGRESSION } from './data/progressionData';
+import { WORLD } from './data/worldData';
 import { MatterRegistry } from './systems/MatterRegistry';
+import { WorldManager } from './systems/WorldManager';
 import { toDisplayNumber } from './util/displayNumber';
 
 type Ribbon = {
@@ -28,6 +30,7 @@ class FlameScene extends Phaser.Scene {
   burned = 0;
   level = 1;
   matterSystem!: MatterRegistry;
+  world!: WorldManager;
   ribbons: Ribbon[] = [];
   scorches: Phaser.GameObjects.Arc[] = [];
   particles!: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -36,7 +39,8 @@ class FlameScene extends Phaser.Scene {
 
   create(){
     this.cameras.main.setBackgroundColor('#080604');
-    this.target.set(this.scale.width / 2, this.scale.height / 2);
+    this.cameras.main.setBounds(0, 0, WORLD.width, WORLD.height);
+    this.target.set(WORLD.width / 2, WORLD.height / 2);
 
     this.halo = this.add.circle(
       this.target.x,
@@ -66,26 +70,33 @@ class FlameScene extends Phaser.Scene {
       }
     });
 
-    for(let i = 0; i < 180; i++) this.matterSystem.spawnFuel();
+    this.world = new WorldManager(this.matterSystem);
+    this.world.populate();
 
-    this.input.on('pointermove', (p: Phaser.Input.Pointer)=>this.target.set(p.x, p.y));
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer)=>this.target.set(p.x, p.y));
+    this.cameras.main.startFollow(this.flame, true, 0.09, 0.09);
+
+    const aimAt = (p: Phaser.Input.Pointer) => {
+      const world = this.cameras.main.getWorldPoint(p.x, p.y);
+      this.target.set(world.x, world.y);
+    };
+    this.input.on('pointermove', aimAt);
+    this.input.on('pointerdown', aimAt);
 
     this.add.text(24, 22, 'THE FLAME', {
       fontFamily:'Inter, sans-serif', fontSize:'12px', color:'#ffffff'
-    }).setDepth(10).setAlpha(.72);
+    }).setScrollFactor(0).setDepth(10).setAlpha(.72);
 
     this.add.text(24, 43, 'move • touch • burn • grow', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
-    }).setDepth(10).setAlpha(.34);
+    }).setScrollFactor(0).setDepth(10).setAlpha(.34);
 
     this.add.text(this.scale.width - 24, 22, 'SPARK', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
-    }).setOrigin(1, 0).setDepth(10).setAlpha(.65).setName('stage');
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(.65).setName('stage');
 
     this.add.text(this.scale.width - 24, 43, `LV ${toDisplayNumber(this.level)}`, {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
-    }).setOrigin(1, 0).setDepth(10).setAlpha(.5).setName('level');
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(.5).setName('level');
 
     this.scale.on('resize', ()=>this.layout());
   }
@@ -248,8 +259,8 @@ class FlameScene extends Phaser.Scene {
     const maxSpeed = 90 + this.flameSize * 8;
     if(this.velocity.length() > maxSpeed) this.velocity.setLength(maxSpeed);
 
-    this.flame.x = Phaser.Math.Clamp(this.flame.x + this.velocity.x * dtS, 10, this.scale.width - 10);
-    this.flame.y = Phaser.Math.Clamp(this.flame.y + this.velocity.y * dtS, 65, this.scale.height - 10);
+    this.flame.x = Phaser.Math.Clamp(this.flame.x + this.velocity.x * dtS, 10, WORLD.width - 10);
+    this.flame.y = Phaser.Math.Clamp(this.flame.y + this.velocity.y * dtS, 10, WORLD.height - 10);
 
     this.heat = Math.max(0, this.heat - GROWTH.heatDecayPerSecond * dtS);
     this.updateFlameVisual(t);
