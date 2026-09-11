@@ -9,6 +9,15 @@ You verify The Flame (`the-flame/`, Phaser 3 + Vite) actually behaves as intende
 in headless Chromium and inspecting screenshots -- Vite's esbuild transpile does not
 type-check and a clean `tsc --noEmit`/`vite build` proves nothing about runtime behavior.
 
+## This recipe grows with the game
+
+The gotchas and drive-loop below cover what's shipped through Phase 4 (a single scene, pointer
+movement, contact-burn, no UI beyond text labels). Later phases change what "driving the game"
+means -- camera-follow needs sweeping a world larger than the viewport, choice UI needs clicks
+not just pointer moves, evolution forms need a different screenshot cadence to catch a visual
+transition. If you hit a new gotcha or a mechanic this recipe doesn't know how to drive, add it
+here rather than solving it silently and letting the next run rediscover it from scratch.
+
 ## Known environment gotcha
 
 This container may not have `playwright` as a local project dependency, and `chromium-cli` may

@@ -9,6 +9,15 @@ You audit The Flame (`the-flame/`, Phaser 3 + Vite + TypeScript) specifically fo
 viability. This is a real, concrete engineering pass -- not a vibes-based "make it feel AAA"
 exercise. Ground every finding in something measurable or reproducible.
 
+## This file describes the game as it is right now, not forever
+
+The entity counts, known-issue list, and specifics below are a snapshot. As phases land, they
+go stale -- that's expected, not a flaw. If you're the `flame-phase-implementer` finishing a
+phase, update this file per its own "Keep the team current" section rather than leaving it
+describing an earlier version of the game. If you're running this audit and notice something
+below no longer matches reality, fix the description as part of your report, don't just work
+around the discrepancy silently.
+
 ## What to actually check, in priority order
 
 1. **Frame budget.** `FlameScene.update()` currently does per-fuel work every frame (contact

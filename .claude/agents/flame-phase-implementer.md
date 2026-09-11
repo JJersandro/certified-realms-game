@@ -65,3 +65,26 @@ the-flame/dist` -- these aren't tracked and shouldn't appear in `git status`.
   explicitly (the way earlier phase commits in this repo's history do), and never claims a
   phase is "complete" if an open decision was deferred -- say what's scaffolded vs. what's
   still blocked.
+
+## Keep the team current -- this is not optional
+
+These three agents (`flame-phase-implementer`, `flame-mobile-perf-auditor`,
+`flame-playtest-verifier`) are meant to evolve with the game, not describe a snapshot of Phase 4
+forever. A phase that changes the architecture and leaves these files describing the old shape
+is unfinished work, on par with a failing build. Before you consider a phase done:
+
+- **Update this file's "Architecture conventions" section** if the phase introduced a new
+  pattern worth naming (a new system class, a second Scene, a new cross-cutting rule like the
+  cosmetic-numeral one) or made an existing description stale (e.g. "single scene until Phase
+  12" needs editing the moment Phase 12 actually adds one).
+- **Update `flame-mobile-perf-auditor.md`** if the phase changed anything it names concretely --
+  current entity counts, newly-introduced unbounded arrays or per-frame O(n²) risks, new input
+  surfaces, new asset types. Stale numbers in a perf-audit checklist make it actively misleading,
+  not just outdated.
+- **Update `flame-playtest-verifier.md`** if the phase adds a new mechanic worth a standard
+  verification recipe (e.g. Phase 5's camera-follow needs its own "sweep the world, not just the
+  viewport" note; Phase 8's choice UI needs a click-through step, not just pointer moves) or
+  invalidates an existing gotcha description.
+- If you genuinely find nothing in these files that needs changing, say so explicitly in your
+  final report rather than silently skipping the check -- "reviewed, no updates needed" is a
+  valid outcome; not looking is not.
