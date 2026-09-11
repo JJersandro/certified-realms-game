@@ -1,10 +1,5 @@
 export const BURNING = {
   contactRadiusMultiplier: 1,
-  ignitionTime: {
-    smallest: 90,
-    medium: 150,
-    large: 260
-  },
   burnPulse: {
     frequency: 0.03,
     scale: 0.12,

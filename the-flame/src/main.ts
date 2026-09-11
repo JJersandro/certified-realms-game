@@ -26,7 +26,6 @@ class FlameScene extends Phaser.Scene {
   heat = 0;
   stability = 1;
   burned = 0;
-  xp = 0;
   level = 1;
   matterSystem!: MatterRegistry;
   ribbons: Ribbon[] = [];
@@ -58,7 +57,6 @@ class FlameScene extends Phaser.Scene {
       addHeat: (amount) => { this.heat = Math.min(GROWTH.maxHeat, this.heat + amount); },
       onFuelBurned: (xpYield) => {
         this.energy += xpYield;
-        this.xp += xpYield;
         this.burned++;
         this.flameSize = Math.min(
           GROWTH.maxFlameSize,
@@ -142,7 +140,7 @@ class FlameScene extends Phaser.Scene {
   tryLevelUp(){
     while(this.level < PROGRESSION.totalLevels){
       const nextLevel = this.level + 1;
-      const hasXp = this.xp >= PROGRESSION.xpForLevel(nextLevel);
+      const hasXp = this.energy >= PROGRESSION.xpForLevel(nextLevel);
       const hasSize = this.flameSize >= PROGRESSION.minFlameSizeForLevel(nextLevel);
       if(!hasXp || !hasSize) break;
       this.level = nextLevel;

@@ -21,11 +21,13 @@ export type Fuel = {
   burnVisual: Phaser.GameObjects.Arc;
 };
 
+export type FlameSnapshot = { x: number; y: number; size: number; level: number };
+
 export type MatterHost = {
   scene: Phaser.Scene;
   particles: Phaser.GameObjects.Particles.ParticleEmitter;
   scorches: Phaser.GameObjects.Arc[];
-  getFlame: () => { x: number; y: number; size: number; level: number };
+  getFlame: () => FlameSnapshot;
   addHeat: (amount: number) => void;
   onFuelBurned: (xpYield: number) => void;
 };
@@ -123,10 +125,8 @@ export class MatterRegistry {
     fuel.burnVisual.destroy();
   }
 
-  private updateFuel(fuel: Fuel, t: number, dt: number){
+  private updateFuel(fuel: Fuel, t: number, dt: number, flame: FlameSnapshot){
     if(!fuel.alive) return;
-
-    const flame = this.host.getFlame();
 
     if(fuel.burnState === 'idle'){
       const ignitable = flame.level >= fuel.tier.minLevelToIgnite;
@@ -160,6 +160,7 @@ export class MatterRegistry {
   }
 
   updateAll(t: number, dt: number){
-    for(const fuel of this.fuels) this.updateFuel(fuel, t, dt);
+    const flame = this.host.getFlame();
+    for(const fuel of this.fuels) this.updateFuel(fuel, t, dt, flame);
   }
 }
