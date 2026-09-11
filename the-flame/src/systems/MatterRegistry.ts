@@ -263,4 +263,18 @@ export class MatterRegistry {
     const flame = this.host.getFlame();
     for(const fuel of this.fuels) this.updateFuel(fuel, t, dt, flame);
   }
+
+  // Burn marks (this.host.scorches) are pushed to in finishBurn() and never
+  // removed on their own -- a session that clears several escalating worlds
+  // (see WorldManager.regenerate()) would otherwise accumulate scorches from
+  // every world it ever passed through, unbounded for the life of the tab.
+  // Called from WorldManager.regenerate() so a freshly generated world starts
+  // with a clean canvas instead of showing the previous world's burn marks.
+  // Lives here (not on WorldManager) because scorches are matter/burn-mark
+  // state that MatterRegistry already owns via the host reference, not
+  // world-region state.
+  clearScorches(){
+    for(const scorch of this.host.scorches) scorch.destroy();
+    this.host.scorches.length = 0;
+  }
 }

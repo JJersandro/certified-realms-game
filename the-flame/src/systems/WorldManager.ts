@@ -37,12 +37,22 @@ export class WorldManager {
   // and repopulates matter. Safe to clear fuels wholesale: every burned fuel
   // already had its visuals destroyed in MatterRegistry.finishBurn, and a
   // fully-consumed world has none left alive.
+  //
+  // Also clears accumulated scorch marks (see MatterRegistry.clearScorches):
+  // this.matter.fuels is replaced wholesale here, not appended to, so a fresh
+  // world's *fuel* count never compounds across clears -- but scorches are a
+  // separate array on the host that regenerate() previously never touched, so
+  // a long session that clears several escalating worlds kept accumulating
+  // every prior world's burn marks forever. A regenerated world is also
+  // narratively a new landscape, so it shouldn't still show the last world's
+  // burns.
   regenerate(hpMultiplier = 1){
     for(const region of WORLD.regions){
       const [min, max] = region.densityRange;
       this.densityByRegion.set(region.id, min + Math.random() * (max - min));
     }
     this.matter.fuels = [];
+    this.matter.clearScorches();
     this.populate(hpMultiplier);
   }
 }

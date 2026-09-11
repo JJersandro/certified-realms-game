@@ -191,7 +191,26 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    `skillTree.unlocked` flips true and stays true; `skillTree.points` matches
    `round(pointsBase * worldStrength-before-escalation * (1 + pointsYieldBonus))`; and
    `matterSystem.fuels` ends up fully alive again at a fresh (not cumulative) count after
-   `regenerate()`. Then verify the HUD for real, not just state: the `SKILL TREE: N PTS` button
+   `regenerate()`. **Also confirm scorch marks reset, not just fuel** (Phase 14 fix --
+   `WorldManager.regenerate()` now calls `MatterRegistry.clearScorches()`): before forcing the
+   clear, burn a few real alive fuels via `registry.finishBurn(fuel, registry.host.getFlame())`
+   (after setting their `burnState` to `'burning'`) to populate `registry.host.scorches` with a
+   few real `Arc`s, keep a reference to those specific objects (`scorchRefsBefore =
+   registry.host.scorches.slice()`), then force the clear as below. Confirm
+   `registry.host.scorches.length === 0` afterward AND that every object in `scorchRefsBefore` was
+   actually destroyed, not just dereferenced (`scorchRefsBefore.every(s => s.scene === null ||
+   s.active === false)`) -- a shallow `scorches.length` check alone wouldn't catch a bug that
+   replaced the array with a new empty one instead of clearing the shared one (which would silently
+   desync `MatterRegistry`'s host reference from `FlameScene.scorches`, since they're meant to be
+   the same array object, not just equal in content -- worth asserting
+   `registry.host.scorches === scene.scorches` too). Do this burn-then-force-clear sequence inside
+   a single `page.evaluate()` call rather than splitting it across two round trips: if another
+   agent is concurrently editing `main.ts`/`UIScene.ts`/`src/data/*.ts` in the same working tree,
+   Vite's HMR full-reload on save will destroy the page's execution context between separate
+   `page.evaluate()` calls (`Execution context was destroyed, most likely because of a
+   navigation`) -- this is an environment hazard from concurrent editing, not a game bug, and
+   wrapping the whole sequence in one evaluate (plus a small retry loop around the whole `run()`)
+   sidesteps it. Then verify the HUD for real, not just state: the `SKILL TREE: N PTS` button
    appears bottom-right (screen-space fixed, must not visually collide with `TILT` at
    bottom-left), `page.mouse.click()` on it toggles a vertical list of the 7 node names + costs
    above it, and clicking an affordable line's bounds (from `line.getBounds()`) actually purchases
