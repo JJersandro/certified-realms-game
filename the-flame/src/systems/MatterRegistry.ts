@@ -21,7 +21,16 @@ export type Fuel = {
   burnVisual: Phaser.GameObjects.Arc;
 };
 
-export type FlameSnapshot = { x: number; y: number; size: number; level: number };
+export type FlameSnapshot = {
+  x: number;
+  y: number;
+  size: number;
+  level: number;
+  // scale-tier reach bonus (see scaleData.ts) -- multiplies BURNING's base
+  // contactRadiusMultiplier, so higher tiers reach further as well as
+  // moving faster.
+  contactRadiusMultiplier: number;
+};
 
 export type MatterHost = {
   scene: Phaser.Scene;
@@ -141,7 +150,7 @@ export class MatterRegistry {
       fuel.visual.setAlpha(restingAlpha);
 
       const inContact = Phaser.Math.Distance.Between(flame.x, flame.y, fuel.x, fuel.y)
-        < (flame.size + fuel.r) * BURNING.contactRadiusMultiplier;
+        < (flame.size + fuel.r) * BURNING.contactRadiusMultiplier * flame.contactRadiusMultiplier;
 
       if(inContact && ignitable) this.ignite(fuel);
       return;

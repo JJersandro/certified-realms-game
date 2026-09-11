@@ -30,6 +30,16 @@ read it first if pointed to one.
 - **Single scene until Phase 12**: `FlameScene` in `main.ts` is the only Phaser Scene until the
   UI/UX refinement phase, which is where a second `UIScene` is introduced. Don't add a Scene
   earlier than that unless the phase you're implementing is that one.
+- **One tier, one row of data**: Phase 6 explicitly chose to fold speed/reach capability gates
+  into the *same* 7-tier/77-level system Phase 4 built for matter ignition, rather than
+  introducing a second, parallel size-based tier concept (`scaleData.ts`'s `SCALE.tierCapabilities`
+  is indexed by `PROGRESSION.tierForLevel()`, and each row carries the display name too -- see
+  `capabilitiesForLevel()`). This was a deliberate decision, not an accident: two tier systems
+  that can drift out of sync (e.g. "high level but small" vs "large but low level") were judged
+  worse than one. Phase 7 (Evolution) is the next place this could recur -- it's tempting to give
+  evolution forms their own independent trigger/tier concept. Default to extending the existing
+  level/tier system unless there's a real reason two axes need to vary independently; if you think
+  there is, that's exactly the kind of open decision to flag rather than assume.
 - **Cosmetic numeral rule**: if you render any number to the player, pass it through
   `toDisplayNumber()` in `src/util/displayNumber.ts` first -- the digit 6 never appears in
   anything displayed, though it's an ordinary integer everywhere in actual game logic.

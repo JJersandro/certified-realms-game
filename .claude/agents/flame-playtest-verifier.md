@@ -96,6 +96,11 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
 4. **Actually look at the screenshots** (Read tool supports images) -- don't just check that the
    file was written. Confirm the specific thing you're verifying: the flame visibly grew, a HUD
    label changed value, matter of the right tier/color is present, scorch marks persist, etc.
+   Since Phase 6, the stage label (SPARK/EMBER/.../CATACLYSM) advances on the same 1/12/23/34/
+   45/56/67 level thresholds that gate matter ignition, not on continuous flame size -- seeing it
+   stay on "SPARK" for a while even as the flame visibly grows and burns fuel is expected, not a
+   regression. Confirm progression via the level number and visible growth/burns instead of
+   expecting the stage label to move quickly.
 5. **Stop the server before finishing:**
    ```bash
    lsof -ti:5183 -sTCP:LISTEN | xargs -r kill

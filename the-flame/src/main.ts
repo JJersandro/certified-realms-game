@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { FLAME_VISUAL } from './data/flameVisualData';
 import { GROWTH } from './data/growthData';
 import { PROGRESSION } from './data/progressionData';
+import { capabilitiesForLevel } from './data/scaleData';
 import { WORLD } from './data/worldData';
 import { MatterRegistry } from './systems/MatterRegistry';
 import { WorldManager } from './systems/WorldManager';
@@ -57,7 +58,13 @@ class FlameScene extends Phaser.Scene {
       scene: this,
       particles: this.particles,
       scorches: this.scorches,
-      getFlame: () => ({ x: this.flame.x, y: this.flame.y, size: this.flameSize, level: this.level }),
+      getFlame: () => ({
+        x: this.flame.x,
+        y: this.flame.y,
+        size: this.flameSize,
+        level: this.level,
+        contactRadiusMultiplier: capabilitiesForLevel(this.level).contactRadiusMultiplier
+      }),
       addHeat: (amount) => { this.heat = Math.min(GROWTH.maxHeat, this.heat + amount); },
       onFuelBurned: (xpYield) => {
         this.energy += xpYield;
@@ -90,7 +97,7 @@ class FlameScene extends Phaser.Scene {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
     }).setScrollFactor(0).setDepth(10).setAlpha(.34);
 
-    this.add.text(this.scale.width - 24, 22, 'SPARK', {
+    this.add.text(this.scale.width - 24, 22, capabilitiesForLevel(this.level).name, {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(.65).setName('stage');
 
@@ -256,7 +263,7 @@ class FlameScene extends Phaser.Scene {
 
     this.velocity.lerp(desired, Math.min(1, dtS * 5.5));
 
-    const maxSpeed = 90 + this.flameSize * 8;
+    const maxSpeed = (90 + this.flameSize * 8) * capabilitiesForLevel(this.level).speedMultiplier;
     if(this.velocity.length() > maxSpeed) this.velocity.setLength(maxSpeed);
 
     this.flame.x = Phaser.Math.Clamp(this.flame.x + this.velocity.x * dtS, 10, WORLD.width - 10);
@@ -268,13 +275,7 @@ class FlameScene extends Phaser.Scene {
     this.matterSystem.updateAll(t, dt);
 
     const stage = this.children.getByName('stage') as Phaser.GameObjects.Text;
-    stage.setText(
-      this.flameSize < 14 ? 'SPARK' :
-      this.flameSize < 22 ? 'EMBER' :
-      this.flameSize < 34 ? 'FLAME' :
-      this.flameSize < 50 ? 'BLAZE' :
-      'INFERNO'
-    );
+    stage.setText(capabilitiesForLevel(this.level).name);
 
     const levelLabel = this.children.getByName('level') as Phaser.GameObjects.Text;
     levelLabel.setText(`LV ${toDisplayNumber(this.level)}`);
