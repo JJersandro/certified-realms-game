@@ -114,6 +114,20 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    without a captured screenshot of the exact moment: strict-mode structural typing on the
    `MatterHost` interface means a missing or mismatched host callback the new logic depends on
    would fail the type check, not just misbehave silently at runtime.
+4. **Driving heat or stability to an extreme (since Phase 9) needs stacked events, not one
+   burn.** `GROWTH.heatDecayPerSecond` (0.16/s) passively erodes heat continuously, while a
+   single ignition only contributes a modest, brief bump (~0.08 flat plus a short burst of
+   `heatRisePerBurnSecond` for that fuel's short burn duration -- tens to a couple hundred ms).
+   One burn is nowhere near enough to cross a threshold like Phase 9's 0.85 overheat trigger --
+   you need several ignitions landing close together in time so their heat contributions stack
+   faster than decay erodes them (a dense cluster + tight circling once you're in it, or several
+   of Phase 8's forced-ignition penalties back to back). This has the same reproducibility
+   problem as the sustained-contact case above: getting several near-simultaneous burns on
+   command via synthetic mouse control is genuinely hard, budget it as probabilistic and report
+   what you actually captured rather than assuming a threshold fired. Confirming the surrounding
+   pipeline stays healthy (normal ignitions still happen, heat/stability values keep updating,
+   zero console errors across the attempt) is itself real evidence the new logic isn't regressing
+   anything, even without capturing the extreme case on screen.
 5. **Check console errors.** A page can render its shell while gameplay logic throws silently --
    `page.on('console', ...)`/`page.on('pageerror', ...)` catch what a screenshot alone won't. A
    lone "404 favicon" is harmless noise; anything else is real.

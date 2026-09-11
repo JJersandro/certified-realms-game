@@ -6,6 +6,7 @@ import { capabilitiesForLevel } from './data/scaleData';
 import { formForLevel } from './data/evolutionData';
 import { WORLD } from './data/worldData';
 import { TILT_CONTROL } from './data/tiltData';
+import { RISK } from './data/riskData';
 import { MatterRegistry } from './systems/MatterRegistry';
 import { WorldManager } from './systems/WorldManager';
 import { TiltControl } from './systems/TiltControl';
@@ -216,6 +217,15 @@ class FlameScene extends Phaser.Scene {
     }
   }
 
+  // mirrors tryLevelUp() going the other way -- shrinking (see update())
+  // below a level's own size requirement demotes it, re-gating whatever
+  // matter/capabilities that level had unlocked.
+  tryLevelDown(){
+    while(this.level > 1 && this.flameSize < PROGRESSION.minFlameSizeForLevel(this.level)){
+      this.level--;
+    }
+  }
+
   createParticles(){
     const g = this.make.graphics({x:0, y:0}, false);
     g.fillStyle(0xffffff, 1);
@@ -337,6 +347,17 @@ class FlameScene extends Phaser.Scene {
     this.flame.y = Phaser.Math.Clamp(this.flame.y + this.velocity.y * dtS, 10, WORLD.height - 10);
 
     this.heat = Math.max(0, this.heat - GROWTH.heatDecayPerSecond * dtS);
+
+    if(this.heat >= RISK.overheatThreshold || this.stability <= RISK.fragileThreshold){
+      const targetSize = Math.max(GROWTH.baseFlameSize, this.flameSize - RISK.shrinkPerSecond * dtS);
+      if(targetSize < this.flameSize){
+        const targetEnergy = Math.pow((targetSize - GROWTH.baseFlameSize) / GROWTH.sizeEnergyFactor, 2);
+        this.energy = Math.min(this.energy, targetEnergy);
+        this.flameSize = targetSize;
+        this.tryLevelDown();
+      }
+    }
+
     this.updateFlameVisual(t);
 
     this.matterSystem.updateAll(t, dt);
