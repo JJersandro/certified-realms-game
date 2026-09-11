@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { FLAME_VISUAL } from '../data/flameVisualData';
+import { FlamePalette } from '../data/flameVisualData';
 import { BURNING } from '../data/burningData';
 import { GROWTH } from '../data/growthData';
 import { MATTER, MatterTier } from '../data/matterData';
@@ -41,6 +41,11 @@ export type FlameSnapshot = {
   // getFlame() rather than reaching for a new Host callback.
   cascadeChanceBonus: number;
   xpYieldMultiplier: number;
+  // Phase 14: the colorblind-safe palette toggle lives on FlameScene --
+  // same "arrives pre-computed via getFlame()" pattern as the skill-tree
+  // bonuses above, so burnVisual/scorch colors (the two remaining
+  // FLAME_VISUAL.palette reads MatterRegistry owned) stay in sync with it.
+  palette: FlamePalette;
 };
 
 export type MatterHost = {
@@ -98,7 +103,7 @@ export class MatterRegistry {
     const maxHp = r * tier.maxHpPerRadius * hpMultiplier;
 
     const visual = scene.add.circle(x, y, r, tier.color, 0.78).setDepth(1);
-    const burnVisual = scene.add.circle(x, y, r * 0.65, FLAME_VISUAL.palette.core, 0)
+    const burnVisual = scene.add.circle(x, y, r * 0.65, flame.palette.core, 0)
       .setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
 
     this.fuels.push({
@@ -174,7 +179,7 @@ export class MatterRegistry {
       fuel.x,
       fuel.y,
       fuel.r * BURNING.scorch.radiusMultiplier,
-      FLAME_VISUAL.palette.emberRed,
+      flame.palette.emberRed,
       BURNING.scorch.alpha
     ).setDepth(0);
 

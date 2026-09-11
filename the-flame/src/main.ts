@@ -120,7 +120,8 @@ class FlameScene extends Phaser.Scene {
         contactRadiusMultiplier: capabilitiesForLevel(this.level).contactRadiusMultiplier
           * (1 + this.skillTree.contactRadiusBonus()),
         cascadeChanceBonus: this.skillTree.cascadeChanceBonus(),
-        xpYieldMultiplier: 1 + this.skillTree.xpYieldBonus()
+        xpYieldMultiplier: 1 + this.skillTree.xpYieldBonus(),
+        palette: this.palette()
       }),
       addHeat: (amount) => {
         const eased = amount * (1 - this.skillTree.heatRiseReductionBonus());
