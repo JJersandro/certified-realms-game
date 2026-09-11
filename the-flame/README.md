@@ -22,17 +22,19 @@ A minimalist browser game built around one fantasy: start as a spark, touch matt
 
 The roadmap is the boundary for the first complete version. New ideas go to a parking lot rather than silently changing the destination.
 
-## Current milestone: Phase 1 — Spark & Movement
-
-The current prototype implements the first playable loop: mouse-following flame, inertia, touch-based burning, energy-driven growth, minimal HUD, particles, and simple burnable matter.
-
 ## Certified Realms visual data
 
-The Flame now uses the **Certified Realms project as its implementation/data home**, while the supplied flame images are treated as visual reference data rather than as a replacement for the game systems.
+The Flame uses the **Certified Realms project as its implementation/data home**, while the supplied flame images are treated as visual reference data rather than as a replacement for the game systems.
 
-The references establish a visual direction: layered ribbon-like flame motion, a hot orange/red primary body, cooler violet/cyan/blue wisps, directional flow, transparent layers, dark negative space, and small ember particles. The extracted reference model lives at `src/data/flameVisualData.ts` and currently drives the procedural flame presentation.
+The references establish a visual direction: layered ribbon-like flame motion, a hot orange/red primary body, cooler violet/cyan/blue wisps, directional flow, transparent layers, dark negative space, and small ember particles. The extracted reference model lives at `src/data/flameVisualData.ts` and drives the procedural flame presentation.
 
 This is visual input for the existing roadmap, not a roadmap change. Mechanics remain governed by the locked game constitution.
+
+## Current milestone: Phase 2 — Touch & Burning
+
+The flame now has a visible burn process. Matter must be physically contacted to ignite. Ignition has readable duration based on matter size, burning produces heat/ember feedback, and completed burns leave a persistent scorch trace while converting the matter into growth energy.
+
+Burned matter is not respawned in this milestone; destruction is becoming persistent state rather than a disposable collision effect.
 
 ## Run locally
 
