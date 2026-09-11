@@ -128,6 +128,15 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    pipeline stays healthy (normal ignitions still happen, heat/stability values keep updating,
    zero console errors across the attempt) is itself real evidence the new logic isn't regressing
    anything, even without capturing the extreme case on screen.
+   Cascading destruction (Phase 10) hits the exact same wall for the same underlying reason
+   (needs two-plus idle fuel within a tier's `cascadeRadiusMultiplier` of each other, and the
+   world's spawn density -- see the Phase 5 note above -- makes that genuinely uncommon within a
+   short test's travel path). This is now the third mechanic in a row with this reproducibility
+   shape: **any mechanic that needs multiple fuel instances or events co-located in time/space is
+   probabilistic to trigger on demand via synthetic mouse control, full stop.** Don't keep
+   re-deriving this per phase -- budget a few honest attempts, report what actually rendered, and
+   lean on code review + a clean `tsc`/`vite build` + zero console errors as the real evidence
+   when the extreme/chained case doesn't land on screen.
 5. **Check console errors.** A page can render its shell while gameplay logic throws silently --
    `page.on('console', ...)`/`page.on('pageerror', ...)` catch what a screenshot alone won't. A
    lone "404 favicon" is harmless noise; anything else is real.

@@ -116,6 +116,25 @@ export class MatterRegistry {
     this.host.particles.explode(Phaser.Math.Between(BURNING.emberBurst.min, Math.min(BURNING.emberBurst.max, 8)));
   }
 
+  // cascading destruction: a fuel that just caught fire can chain-ignite
+  // nearby idle matter, which can itself chain further -- recursion is
+  // naturally bounded since ignite() is a no-op on anything not idle, so
+  // each fuel enters this chain at most once.
+  private tryCascade(source: Fuel, flame: FlameSnapshot){
+    const radius = source.r * source.tier.cascadeRadiusMultiplier;
+    for(const other of this.fuels){
+      if(other === source || !other.alive || other.burnState !== 'idle') continue;
+      if(flame.level < other.tier.minLevelToIgnite) continue;
+      if(Math.random() >= source.tier.cascadeChance) continue;
+
+      const dist = Phaser.Math.Distance.Between(source.x, source.y, other.x, other.y);
+      if(dist > radius) continue;
+
+      this.ignite(other);
+      this.tryCascade(other, flame);
+    }
+  }
+
   finishBurn(fuel: Fuel){
     if(!fuel.alive) return;
 
@@ -162,6 +181,7 @@ export class MatterRegistry {
       if(inContact && ignitable){
         fuel.forceProgress = 0;
         this.ignite(fuel);
+        this.tryCascade(fuel, flame);
         return;
       }
 
@@ -182,6 +202,7 @@ export class MatterRegistry {
           this.host.addHeat(CHOICES.riskyIgnition.heatPenalty);
           this.host.applyStabilityPenalty(CHOICES.riskyIgnition.stabilityPenalty);
           this.ignite(fuel);
+          this.tryCascade(fuel, flame);
         }
         return;
       }
