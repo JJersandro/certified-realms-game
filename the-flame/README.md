@@ -30,11 +30,52 @@ The references establish a visual direction: layered ribbon-like flame motion, a
 
 This is visual input for the existing roadmap, not a roadmap change. Mechanics remain governed by the locked game constitution.
 
-## Current milestone: Phase 3 — Growth
+## Current milestone: Phase 15 — Complete game
 
-Phases 1–2 established movement and contact-driven burning. Phase 3 now makes growth a visible physical state: consumed energy increases flame size, active burning raises heat and glow, movement direction affects stability, and those internal states alter stretch, wobble, ribbon motion, core brightness, and ember activity.
+All 15 roadmap phases are implemented. A player's session now runs, in order:
 
-Burned matter remains destroyed and leaves a persistent scorch trace. No respawn loop has been introduced.
+- **Title screen** (`TitleScene`): a minimal "THE FLAME" / "tap to begin" card is the first
+  thing that boots; `FlameScene`/`UIScene` don't simulate or render a single frame until the
+  player taps through.
+- **Spark, movement, and touch/burning** (Phases 1–2): pointer-driven steering, contact-based
+  ignition of nearby matter.
+- **Growth** (Phase 3): consumed energy increases flame size; active burning raises heat and
+  glow; movement direction affects stability, and those internal states alter stretch, wobble,
+  ribbon motion, core brightness, and ember activity. Burned matter stays destroyed and leaves
+  a persistent scorch trace.
+- **Matter hierarchy** (Phase 4): a 7-tier/77-level ignition-gate system (`progressionData.ts`,
+  `matterData.ts`) determines what the flame can burn at a given level.
+- **World** (Phase 5): a 4000x3000 world of regions (`worldData.ts`), much bigger than the
+  viewport, with camera-follow (`WorldManager` driving `MatterRegistry`).
+- **Scale progression** (Phase 6): the same level/tier system also gates speed and reach
+  capabilities (`scaleData.ts`) — one tier system, not two that could drift apart.
+- **Evolution** (Phase 7): heat/stability-blended color forms per tier (`evolutionData.ts`),
+  built from whichever palette (default or colorblind-safe) is currently active.
+- **Meaningful choices** and **risk & balance** (Phases 8–9): forced/risky ignition
+  (`choiceData.ts`, `riskData.ts`) and overheat/instability that shrinks the flame and can
+  demote its level.
+- **Cascading destruction** (Phase 10): nearby idle fuel can catch fire from an adjacent burn.
+- **Planetary/world endgame** (Phase 11): fully clearing a world escalates `worldStrength` for
+  the next generated world (`endgameData.ts`) and unlocks a 7-node permanent skill tree
+  (`skillTreeData.ts`, `SkillTreeManager`) — this loop repeats indefinitely; there is no win
+  condition or ending screen, by design.
+- **UI/UX refinement** (Phase 12): all HUD chrome lives in a second scene, `UIScene`, running
+  in parallel with `FlameScene` and communicating only via `game.events`.
+- **Audio** (Phase 13): every sound (ignite ping, ember crackle, level-up chime, world-clear
+  fanfare, skill-purchase blip, continuous heat-driven ambient drone) is synthesized at runtime
+  via the raw Web Audio API — no loaded/licensed audio files.
+- **Polish & optimization** (Phase 14): Phaser postFX (`Glow`/`Bloom`) on the flame body, core,
+  and halo; a colorblind-safe alternate palette and a reduced-motion toggle, both under a
+  `SETTINGS` HUD button; scorch marks now clear on every world regenerate.
+- **Complete game** (Phase 15): the title screen above, plus a final coherence pass across every
+  earlier phase. There is deliberately no restart/replay UI — once play starts, the session runs
+  continuously exactly as it always has; refreshing the browser tab is how a player starts over.
+
+The game is also installable as a PWA (manifest + service worker, no native app shell).
+
+No respawn or reset loop exists anywhere in the game. Burned matter remains destroyed within a
+world, and a full world clear regenerates fresh (tougher) matter rather than resetting anything
+about the flame itself.
 
 ## Run locally
 

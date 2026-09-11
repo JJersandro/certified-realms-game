@@ -151,6 +151,36 @@ read it first if pointed to one.
   phase reaching for a Phaser built-in effect or another settings-style toggle should follow
   this shape rather than inventing a new one.
 
+- **A third Scene, added for exactly one reason: gate the first frame of gameplay behind a
+  deliberate player action.** Phase 15 added `TitleScene` (`src/scenes/TitleScene.ts`, key
+  `'title'`) as the first entry in the game config's `scene` array (`scene:[TitleScene,
+  FlameScene, UIScene]`). This does not contradict the "two scenes" framing above so much as
+  extend it for a narrow, one-off purpose: Phaser only auto-starts index 0 of a scene array (see
+  `SceneManager.add`'s `autoStart: (i === 0)`), so `FlameScene`/`UIScene` are still instantiated
+  at boot (their class fields run) but neither scene's `create()` executes -- meaning no
+  simulation, no rendering, no HUD -- until `TitleScene`'s own tap handler calls `this.scene.
+  start('flame')`. `TitleScene` is deliberately the simplest scene in the codebase: a title, a
+  subtitle/prompt, one small pulsing circle with the same `Phaser.FX.Glow` API Phase 14
+  introduced (not a flame preview -- no ribbons, no particles, no palette blending), and a single
+  `this.input.once('pointerdown', ...)` handler. It does not call `this.scene.launch('ui')`
+  itself -- `FlameScene.create()` already does that once it starts, so duplicating it here would
+  double-launch `UIScene`. Since this tap is the session's actual first user gesture (not
+  whatever `FlameScene`'s own pointerdown listener would have caught, since that listener isn't
+  registered until after the tap), `TitleScene`'s handler also unlocks the `AudioManager`
+  (`(this.scene.get('flame') as Phaser.Scene & { audio?: { unlock: () => void } }).audio?.
+  unlock()`) before calling `scene.start('flame')` -- a structural-typing cast rather than an
+  import of `FlameScene`'s class from `main.ts`, since `FlameScene` isn't currently exported and
+  importing it would create a `main.ts` <-> `TitleScene.ts` circular module dependency for no
+  real benefit. `FlameScene`'s own Phase-13 `unlock()` call in its pointerdown handler is left
+  exactly where it is (calling `unlock()` twice is harmless -- it's idempotent); this is
+  deliberate redundancy, not a bug. **Do not build restart/replay logic anywhere as part of a
+  title screen or any other future work** -- this was an explicit product decision for Phase 15:
+  once `'flame'` starts, the session runs as one continuous, ever-escalating loop (Phase 11's
+  world-clear/skill-tree endgame already never truly ends, by design) for as long as the tab
+  stays open, and a browser refresh is the only supported way to start over. If a future phase is
+  tempted to add a "play again"/"reset world" button, that is a new, unrequested product decision
+  -- flag it rather than assume it belongs.
+
 ## Before writing code
 
 1. Read the specific phase's entry in the roadmap plan (if one was given to you) or ask the

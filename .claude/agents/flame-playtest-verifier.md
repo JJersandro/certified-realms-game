@@ -47,6 +47,27 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    (nohup npx vite --port 5183 --strictPort > /tmp/vite-dev.log 2>&1 &)
    timeout 30 bash -c 'until curl -sf http://localhost:5183/ >/dev/null; do sleep 1; done'
    ```
+1.5. **Click through the title screen first (Phase 15) -- every technique below now needs this
+   one extra step before it applies.** `page.goto` no longer lands on an interactable game: the
+   first scene to boot is now `TitleScene` (`'title'`), and `FlameScene`/`UIScene` don't run
+   `create()` -- no simulation, no rendering, no HUD -- until the player taps through it. Add one
+   `page.mouse.click()` (or `page.mouse.down()`/`.up()` if you specifically need to exercise the
+   audio-unlock gesture, see the audio section below) anywhere on the canvas immediately after
+   `page.goto`, before any `page.mouse.move`/HUD interaction:
+   ```js
+   await page.goto('http://localhost:5183/', { waitUntil: 'networkidle' });
+   await page.mouse.click(512, 350); // dismiss the title screen -- required every run now
+   await page.waitForTimeout(300); // let FlameScene.create()/UIScene.create() finish
+   ```
+   Forgetting this step is the single most likely way to silently "fail" a verification run
+   post-Phase-15: every `page.mouse.move` will still execute without error, but nothing will
+   respond, because `FlameScene.update()` is never being called at all (the scene was never
+   started). A blank-looking screenshot with the title's "THE FLAME" / "tap to begin" text still
+   visible partway through a driving loop is the tell that this step was skipped, not that
+   gameplay broke. If you need a temporary `window.__game` debug hook (see the world-clear
+   technique below), it's fine to check `window.__game.scene.isActive('title')` /
+   `.isActive('flame')` right after the click to positively confirm the transition happened,
+   rather than assuming it from the click alone.
 2. **Drive it.** This game has no DOM UI beyond a few canvas-rendered text labels -- everything
    is `page.mouse.move(x, y)` to steer the flame, `page.waitForTimeout()` between moves, and
    screenshots to inspect state. Since Phase 12, the HUD (title/subtitle, stage/level labels,
@@ -99,6 +120,8 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
    page.on('pageerror', err => errors.push(String(err)));
    await page.goto('http://localhost:5183/', { waitUntil: 'networkidle' });
+   await page.mouse.click(512, 350); // Phase 15: dismiss the title screen first, every run
+   await page.waitForTimeout(300);
    for (let round = 0; round < 200; round++) {
      const x = 100 + (round % 20) * 45;
      const y = 100 + (Math.floor(round / 20) % 12) * 50;
@@ -335,6 +358,49 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
       absence of errors instead: toggle it on, read `scene.reducedMotion === true`, let a few
       frames of `update()` run with no console errors, toggle back off. That, plus a clean
       `tsc --noEmit`/`vite build`, is adequate evidence here.
+
+12. **Verifying Phase 15's title screen and the final end-to-end chain.**
+    - **The title screen itself**: `page.goto` then screenshot *before* any click -- confirm
+      "THE FLAME" and a "tap to begin"-style prompt render against the same `#080604` background
+      as gameplay, with no HUD text (no TILT/SOUND/SKILL TREE/SETTINGS buttons -- those belong to
+      `UIScene`, which hasn't launched yet). A temporary `window.__game` debug hook (same
+      throwaway-line technique as the Phase 11/13 sections above -- add `(window as any).__game =
+      <the Phaser.Game instance>` right after construction in `main.ts`, revert before finishing,
+      must not appear in the committed diff) lets you assert
+      `window.__game.scene.isActive('title') === true` and `.isActive('flame') === false` /
+      `.isActive('ui') === false` at this point, rather than inferring it from the screenshot
+      alone.
+    - **The transition**: one `page.mouse.click()` anywhere on the canvas should flip those three
+      flags (`title` inactive, `flame` and `ui` both active -- confirming `FlameScene.create()`'s
+      own `this.scene.launch('ui')` fired, not a duplicate launch from `TitleScene`) and the very
+      next screenshot should show the flame sprite and the full HUD, with no leftover title text.
+    - **Audio-unlock timing**: `window.__game.scene.getScene('flame').audio['context'].state`
+      should read `'suspended'` before the click and `'running'` immediately after -- this is the
+      proof that `TitleScene`'s tap handler is unlocking `AudioManager` (Phase 15 moved/duplicated
+      this call onto the title tap specifically because it's the session's actual first user
+      gesture; see the phase-implementer agent's notes on why). `AudioManager`'s constructor still
+      runs at `Phaser.Game` construction time regardless of the title screen (class fields on
+      `FlameScene` are instantiated for every configured scene at boot, not just the one that
+      auto-starts -- see the mobile-perf-auditor's Phase 15 note), so `context.state` reading
+      `'suspended'` pre-click is expected and correct, not a bug.
+    - **Full end-to-end chain in one sitting**: title -> tap -> steer/ignite/grow -> level up ->
+      force a world clear via the existing Phase 11 `checkWorldConsumed()` debug technique ->
+      confirm `worldStrength` escalated, `skillTree.unlocked` flipped true, scorches cleared,
+      fuel count reset -> open the skill tree HUD and purchase a node -> confirm the line flips to
+      "(owned)". This is the same sequence the Phase 11/14 sections above already establish
+      piece-by-piece; Phase 15's job is confirming nothing about the title screen (or any earlier
+      phase's later change, e.g. the Phase 14 SETTINGS button) broke any step of it when run
+      together, back-to-back, in one script -- run it as one continuous script rather than
+      re-verifying each phase in isolation.
+    - **A practical timing note observed in this container**: with all of Phase 14's postFX
+      pipelines active, a long `page.mouse.move` sweep loop (hundreds of iterations) can take
+      substantially longer wall-clock time here than the naive `iterations * waitForTimeout`
+      arithmetic suggests -- SwiftShader (software WebGL) under sustained per-frame Glow/Bloom
+      rendering has been observed to stretch a ~16s loop past 100s+ in this environment. This is
+      not a regression to chase or a reason to strip postFX -- budget a longer timeout for any
+      multi-hundred-iteration sweep (run it with `run_in_background: true` and poll the output
+      file rather than a synchronous call with a short timeout) rather than concluding the driver
+      script hung.
 
 ## Report
 

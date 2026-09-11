@@ -113,6 +113,24 @@ around the discrepancy silently.
    future audit doesn't mistake it for an unexplained per-frame cost if profiling ever gets this
    granular.
 
+10. **A third scene, boot-instantiated but not boot-started (Phase 15).** `TitleScene` (key
+    `'title'`) is now index 0 of the game config's `scene` array, with `FlameScene`/`UIScene`
+    still both instantiated at `Phaser.Game` construction (their class fields, including
+    `FlameScene`'s `new AudioManager()` -- which itself immediately opens an `AudioContext` and
+    starts the ambient oscillator, see the audio sections above -- and `new SkillTreeManager()`,
+    `new MatterRegistry`-adjacent state, etc.) but not started until the title tap fires
+    `this.scene.start('flame')`. This means the `AudioContext`/ambient-oscillator graph exists
+    and is already running-but-silent-until-unlocked from the moment the page loads, not from the
+    moment gameplay starts -- no new concern versus pre-Phase-15 behavior (the same was already
+    true when `FlameScene` auto-started immediately), just confirm this timing didn't shift in a
+    way that changes when the `visibilitychange` suspend/resume listener gets attached (it's
+    still in `AudioManager`'s constructor, which still runs at the same boot moment as before).
+    `TitleScene` itself is the cheapest scene in the codebase -- two `Text` objects, one `Arc`,
+    two looping `tweens.add()` calls, no `update()` method, no per-frame polling -- so it adds no
+    measurable frame-budget cost while it's showing, and once `scene.start('flame')` fires,
+    Phaser stops updating/rendering it entirely (a `start()` call, unlike `launch()`, stops the
+    scene it's called from).
+
 ## How to verify, not just theorize
 
 Use a real headless run (see the `flame-playtest-verifier` agent's recipe for the dev-server +

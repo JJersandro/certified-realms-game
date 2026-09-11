@@ -16,6 +16,7 @@ import { TiltControl } from './systems/TiltControl';
 import { SkillTreeManager } from './systems/SkillTreeManager';
 import { AudioManager } from './systems/AudioManager';
 import { UIScene } from './scenes/UIScene';
+import { TitleScene } from './scenes/TitleScene';
 
 type ControlMode = 'touch' | 'gyroscope';
 
@@ -567,5 +568,10 @@ new Phaser.Game({
   backgroundColor:'#080604',
   scale:{mode:Phaser.Scale.RESIZE,width:window.innerWidth,height:window.innerHeight},
   render:{antialias:true,powerPreference:'high-performance'},
-  scene:[FlameScene, UIScene]
+  // Phase 15: TitleScene is first, so it auto-starts and boots before
+  // FlameScene/UIScene begin simulating or rendering anything (Phaser only
+  // auto-starts index 0 of a scene array) -- the player must tap through
+  // the title screen before gameplay starts. FlameScene still calls
+  // this.scene.launch('ui') itself once it starts.
+  scene:[TitleScene, FlameScene, UIScene]
 });
