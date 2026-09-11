@@ -1,4 +1,5 @@
 import { PROGRESSION } from './progressionData';
+import { FLAME_VISUAL, type FlamePalette } from './flameVisualData';
 
 export type EvolutionForm = {
   tier: number;
@@ -17,19 +18,28 @@ export type EvolutionForm = {
 // still gates which family you're in (no separate unlock axis, per the
 // same "one tier system" principle Phase 6 established); heat/stability
 // only flavor *within* the current family.
-export const EVOLUTION = {
-  forms: [
-    { tier: 1, base: 0xff8a18, hot: 0xffc43b, calm: 0xff3b16 },
-    { tier: 2, base: 0xff5b18, hot: 0xffc43b, calm: 0xff3b16 },
-    { tier: 3, base: 0xff8a18, hot: 0xe35c9c, calm: 0xff5b18 },
-    { tier: 4, base: 0xe35c9c, hot: 0xd34fe0, calm: 0xff8a18 },
-    { tier: 5, base: 0xd34fe0, hot: 0x38b9e8, calm: 0xe35c9c },
-    { tier: 6, base: 0x38b9e8, hot: 0x2874d0, calm: 0xd34fe0 },
-    { tier: 7, base: 0x2874d0, hot: 0xfff5c9, calm: 0x38b9e8 }
-  ]
-} as const satisfies { forms: readonly EvolutionForm[] };
+//
+// Phase 14: built from a FlamePalette rather than hardcoded hex, so the
+// colorblind-safe alternate palette (see FLAME_VISUAL's activePalette()) can
+// swap every tier's family at once instead of this table silently keeping
+// stale literal copies of the default palette's hues.
+function buildForms(palette: FlamePalette): readonly EvolutionForm[] {
+  return [
+    { tier: 1, base: palette.orange, hot: palette.gold, calm: palette.emberRed },
+    { tier: 2, base: palette.hotRed, hot: palette.gold, calm: palette.emberRed },
+    { tier: 3, base: palette.orange, hot: palette.magenta, calm: palette.hotRed },
+    { tier: 4, base: palette.magenta, hot: palette.violet, calm: palette.orange },
+    { tier: 5, base: palette.violet, hot: palette.cyan, calm: palette.magenta },
+    { tier: 6, base: palette.cyan, hot: palette.blue, calm: palette.violet },
+    { tier: 7, base: palette.blue, hot: palette.core, calm: palette.cyan }
+  ];
+}
 
-export function formForLevel(level: number): EvolutionForm {
+export const EVOLUTION = {
+  forms: buildForms(FLAME_VISUAL.palette)
+} as const;
+
+export function formForLevel(level: number, palette: FlamePalette = FLAME_VISUAL.palette): EvolutionForm {
   const tier = PROGRESSION.tierForLevel(level);
-  return EVOLUTION.forms[tier - 1];
+  return buildForms(palette)[tier - 1];
 }

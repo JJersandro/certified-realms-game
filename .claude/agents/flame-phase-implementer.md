@@ -111,6 +111,46 @@ read it first if pointed to one.
   one named tunable block to `audioData.ts` and one method to `AudioManager`, not inline Web
   Audio calls in scene code.
 
+- **Visual polish via Phaser's built-in postFX, and accessibility toggles as settings, not
+  gameplay actions**: Phase 14 added `GameObject.postFX` (Phaser 3.60+, WebGL-only, silently a
+  no-op under a Canvas fallback -- `Phaser.AUTO` picks WebGL first, so this needs no manual
+  fallback path) as the game's first non-Web-Audio use of a built-in engine feature beyond raw
+  shape/particle primitives, applied narrowly: `Glow` on the main flame body and core only,
+  `Bloom` on the halo only, nothing on the 5 ribbons (already read as glowy via additive blend
+  modes, and stacking more glow risked collapsing them into an indistinct blob, working against
+  `FLAME_VISUAL.presentation.avoidSolidCircleAppearance`/`preserveDarkNegativeSpace`) and nothing
+  on the ember particles. FX controller objects (`flameGlow`/`coreGlow`) are stored and their
+  `.color` is updated every frame in `updateFlameVisual()` alongside the existing evolvedColor
+  computation, so the glow tracks the flame's actual current color rather than freezing at
+  creation time; the halo's Bloom color is set once and left static since the halo's own color
+  was already static before this phase (only its radius/alpha are animated). Same phase
+  introduced the "one universal alternate palette" shape for accessibility (not per-deficiency
+  variants -- a deliberate, narrowly-scoped product decision): `COLORBLIND_PALETTE` in
+  `flameVisualData.ts` plus an `activePalette(colorblindSafe)` accessor, with `FlameScene.
+  palette()` as the one call site every other palette read routes through (`createFlameBody`,
+  `updateFlameVisual`'s `formForLevel(level, palette)`, `ribbonColors()`). Note that
+  `evolutionData.ts`'s per-tier color families were hardcoded literal hex duplicates of the
+  default palette before this phase -- they were refactored to build from a passed-in
+  `FlamePalette` instead, since leaving them as stale literal copies would have made the
+  colorblind toggle silently not apply to the flame's actual heat/stability-driven body color
+  (only the ribbons), which would have been a real, easy-to-miss bug. Ribbon fill color is set
+  once at creation and never touched per frame (unlike the flame/core), so toggling the palette
+  needs one explicit repaint (`recolorRibbons()`) rather than being picked up automatically next
+  frame -- watch for this shape (some visual properties are per-frame-recomputed, some are
+  set-once) whenever adding a new toggle that affects an existing visual. Reduced motion is a
+  single `ACCESSIBILITY.reducedMotionScale` multiplier (`accessibilityData.ts`) applied to
+  existing sine-amplitude terms (wobble, ribbon sway/jitter, halo pulse) in `updateFlameVisual()`
+  -- damped, not zeroed, since a fully static flame reads as broken, not accessible. Both toggles
+  are settings, not moment-to-moment actions, so they don't get their own HUD buttons: one new
+  `SETTINGS` button (top-center -- the one open fixed HUD position, top-left/top-right already
+  taken) toggles open a two-line list (`Colorblind: ON/OFF`, `Reduced Motion: ON/OFF`), each line
+  independently tappable, following the exact same request/confirm `game.events` round-trip
+  every other toggle this session uses (`'ui:requestToggleColorblind'` ->
+  `'ui:colorblindChanged'`, `'ui:requestToggleReducedMotion'` -> `'ui:reducedMotionChanged'`) and
+  added to `UIScene.isPointOverUI()`'s click-guard set like every other HUD element. Any future
+  phase reaching for a Phaser built-in effect or another settings-style toggle should follow
+  this shape rather than inventing a new one.
+
 ## Before writing code
 
 1. Read the specific phase's entry in the roadmap plan (if one was given to you) or ask the

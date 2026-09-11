@@ -25,10 +25,20 @@ export class UIScene extends Phaser.Scene {
   soundButton!: Phaser.GameObjects.Text;
   skillTreeButton!: Phaser.GameObjects.Text;
   skillTreeLines: Phaser.GameObjects.Text[] = [];
+  // Phase 14: top-center is the one open fixed HUD position -- top-left has
+  // title/subtitle, top-right has stage/level. Same bare-bones
+  // button-toggles-a-list pattern as the skill tree button/lines below,
+  // just with exactly two always-visible lines (no owned/afford states).
+  settingsButton!: Phaser.GameObjects.Text;
+  colorblindLine!: Phaser.GameObjects.Text;
+  reducedMotionLine!: Phaser.GameObjects.Text;
 
   listOpen = false;
   latestPoints = 0;
   latestNodes: SkillNodeView[] = [];
+  settingsOpen = false;
+  colorblindOn = false;
+  reducedMotionOn = false;
 
   constructor(){ super('ui'); }
 
@@ -88,6 +98,27 @@ export class UIScene extends Phaser.Scene {
       this.skillTreeLines.push(line);
     }
 
+    this.settingsButton = this.add.text(this.scale.width / 2, 22, 'SETTINGS', {
+      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6)
+      .setInteractive({ useHandCursor: true });
+    this.settingsButton.on('pointerdown', () => {
+      this.settingsOpen = !this.settingsOpen;
+      this.renderSettingsLines();
+    });
+
+    this.colorblindLine = this.add.text(this.scale.width / 2, 22, 'Colorblind: OFF', {
+      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6).setVisible(false)
+      .setInteractive({ useHandCursor: true });
+    this.colorblindLine.on('pointerdown', () => this.game.events.emit('ui:requestToggleColorblind'));
+
+    this.reducedMotionLine = this.add.text(this.scale.width / 2, 22, 'Reduced Motion: OFF', {
+      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6).setVisible(false)
+      .setInteractive({ useHandCursor: true });
+    this.reducedMotionLine.on('pointerdown', () => this.game.events.emit('ui:requestToggleReducedMotion'));
+
     this.layout();
 
     this.game.events.on('ui:levelChanged', this.onLevelChanged, this);
@@ -95,6 +126,8 @@ export class UIScene extends Phaser.Scene {
     this.game.events.on('ui:skillTreeUnlocked', this.onSkillTreeUnlocked, this);
     this.game.events.on('ui:skillTreeChanged', this.onSkillTreeChanged, this);
     this.game.events.on('ui:audioMuteChanged', this.onAudioMuteChanged, this);
+    this.game.events.on('ui:colorblindChanged', this.onColorblindChanged, this);
+    this.game.events.on('ui:reducedMotionChanged', this.onReducedMotionChanged, this);
 
     this.scale.on('resize', () => this.layout());
 
@@ -104,6 +137,8 @@ export class UIScene extends Phaser.Scene {
       this.game.events.off('ui:skillTreeUnlocked', this.onSkillTreeUnlocked, this);
       this.game.events.off('ui:skillTreeChanged', this.onSkillTreeChanged, this);
       this.game.events.off('ui:audioMuteChanged', this.onAudioMuteChanged, this);
+      this.game.events.off('ui:colorblindChanged', this.onColorblindChanged, this);
+      this.game.events.off('ui:reducedMotionChanged', this.onReducedMotionChanged, this);
     });
   }
 
@@ -123,6 +158,21 @@ export class UIScene extends Phaser.Scene {
   onAudioMuteChanged = ({ label }: { label: string }) => {
     this.soundButton.setText(label);
   };
+
+  onColorblindChanged = ({ on }: { on: boolean }) => {
+    this.colorblindOn = on;
+    this.renderSettingsLines();
+  };
+
+  onReducedMotionChanged = ({ on }: { on: boolean }) => {
+    this.reducedMotionOn = on;
+    this.renderSettingsLines();
+  };
+
+  renderSettingsLines(){
+    this.colorblindLine.setText(`Colorblind: ${this.colorblindOn ? 'ON' : 'OFF'}`).setVisible(this.settingsOpen);
+    this.reducedMotionLine.setText(`Reduced Motion: ${this.reducedMotionOn ? 'ON' : 'OFF'}`).setVisible(this.settingsOpen);
+  }
 
   onSkillTreeChanged = ({ points, nodes }: { points: number; nodes: SkillNodeView[] }) => {
     this.latestPoints = points;
@@ -151,6 +201,9 @@ export class UIScene extends Phaser.Scene {
     for(const line of this.skillTreeLines){
       if(line.visible && Phaser.Geom.Rectangle.Contains(line.getBounds(), x, y)) return true;
     }
+    if(Phaser.Geom.Rectangle.Contains(this.settingsButton.getBounds(), x, y)) return true;
+    if(this.colorblindLine.visible && Phaser.Geom.Rectangle.Contains(this.colorblindLine.getBounds(), x, y)) return true;
+    if(this.reducedMotionLine.visible && Phaser.Geom.Rectangle.Contains(this.reducedMotionLine.getBounds(), x, y)) return true;
     return false;
   }
 
@@ -164,5 +217,8 @@ export class UIScene extends Phaser.Scene {
       const fromBottom = this.skillTreeLines.length - i;
       this.skillTreeLines[i].setPosition(this.scale.width - 24, this.scale.height - 32 - fromBottom * 18);
     }
+    this.settingsButton.setPosition(this.scale.width / 2, 22);
+    this.colorblindLine.setPosition(this.scale.width / 2, 22 + 20);
+    this.reducedMotionLine.setPosition(this.scale.width / 2, 22 + 40);
   }
 }

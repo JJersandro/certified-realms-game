@@ -286,6 +286,56 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
       available here, and don't invent one (e.g. don't try to assert specific frequency/gain
       values from outside the closure; `AudioManager`'s internals are intentionally private).
 
+11. **Verifying Phase 14's postFX and accessibility toggles.**
+    - **WebGL confirmed available in this container's headless Chromium**: `window.__game.
+      renderer.type` reads `2` (`Phaser.WEBGL`), not `1` (`Phaser.CANVAS`) -- i.e. `Phaser.AUTO`
+      picks WebGL here (SwiftShader/software rendering, not a real GPU, but a real WebGL context
+      all the same), so postFX (`GameObject.postFX.addGlow`/`addBloom`, WebGL-only) actually
+      renders rather than silently no-op'ing. Don't assume this without checking, but it held in
+      this environment as of Phase 14. To confirm a postFX pipeline is genuinely attached (not
+      just that `addGlow`/`addBloom` didn't throw): the FX controller object returned by
+      `addGlow`/`addBloom` (what `FlameScene` stores as `flameGlow`/`coreGlow`) is the right thing
+      to inspect for its live `.color` -- checking `gameObject.postFX.list.length` is a red
+      herring for *post*FX specifically (Phaser's `FX.add()` only pushes onto `.list` for *pre*FX;
+      postFX effects get attached via `setPostPipeline`/`getPostPipeline` instead and show up in
+      `gameObject.postPipelines.length`, and `hasPostPipeline === true`). Screenshot evidence: at
+      low heat/size the glow is a subtle brightening around the flame's edge; pushing
+      `scene.heat` and `scene.level` up via `page.evaluate()` (no organic play needed) makes the
+      soft bloom halo around the small flame circle clearly visible against the black background
+      in a screenshot, distinctly softer-edged than the hard-edged circle rendered before Phase
+      14. Confirm `flameGlow.color`/`coreGlow.color` reads the same value as `flame.fillColor` /
+      the lightened core color after a `page.evaluate()` heat/level change -- that's the proof
+      the glow is retinted every frame from the live evolved color, not frozen at creation time.
+    - **New HUD button**: `SETTINGS` sits top-center (`UIScene.settingsButton`, `scale.width/2,
+      22` -- top-left has title/subtitle, top-right has stage/level, so this is the one open
+      fixed position). Clicking it toggles `UIScene.settingsOpen` and shows/hides exactly two
+      lines below it, `colorblindLine`/`reducedMotionLine` (`"Colorblind: ON/OFF"`, `"Reduced
+      Motion: ON/OFF"`), same bare-bones button-toggles-a-list shape as `SKILL TREE`. Each line is
+      independently clickable and emits `'ui:requestToggleColorblind'` /
+      `'ui:requestToggleReducedMotion'`; `FlameScene` owns `colorblindSafe`/`reducedMotion`,
+      mutates on the request, and echoes back `'ui:colorblindChanged'`/`'ui:reducedMotionChanged'`
+      with the confirmed new boolean for `UIScene` to render -- the same request/confirm
+      round-trip shape as every other toggle this session (TILT, SOUND). Confirm via
+      `page.mouse.click()` on `settingsButton.getBounds()` center that the list appears/
+      disappears, that clicking a line flips its own text and the underlying `scene.
+      colorblindSafe`/`scene.reducedMotion` boolean, and -- same click-guard proof pattern as
+      every other HUD element -- that `flame.x`/`flame.y` do not change from clicking any of
+      these three elements (all three are in `UIScene.isPointOverUI()`'s guard set).
+    - **Colorblind palette change is visually real, not just a state flip**: screenshot the flame
+      before and after toggling, at the same heat/level/position -- the default palette's low-tier
+      flame renders as a saturated red-orange circle, the colorblind-safe palette's renders
+      visibly more yellow-orange (see `COLORBLIND_PALETTE` in `flameVisualData.ts`). Also check
+      `scene.ribbons[i].visual.fillColor` before/after the toggle -- ribbons are recolored once
+      explicitly on toggle (`FlameScene.recolorRibbons()`), not picked up automatically next frame
+      like the flame/core body color is, so if a future change to this area regresses that explicit
+      repaint, the ribbon fill color is where it would show up as stale first.
+    - **Reduced motion has no visual assertion worth automating** (it dampens sine-wave amplitude
+      terms by a constant factor -- real to the eye over several seconds of continuous play, not
+      something a before/after screenshot pair reliably captures). Confirm it via state and
+      absence of errors instead: toggle it on, read `scene.reducedMotion === true`, let a few
+      frames of `update()` run with no console errors, toggle back off. That, plus a clean
+      `tsc --noEmit`/`vite build`, is adequate evidence here.
+
 ## Report
 
 State plainly what you verified and how (which screenshot showed what), any console errors

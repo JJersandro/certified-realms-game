@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { FLAME_VISUAL } from './data/flameVisualData';
+import { FLAME_VISUAL, activePalette, type FlamePalette } from './data/flameVisualData';
+import { ACCESSIBILITY } from './data/accessibilityData';
 import { GROWTH } from './data/growthData';
 import { PROGRESSION } from './data/progressionData';
 import { capabilitiesForLevel } from './data/scaleData';
@@ -62,8 +63,27 @@ class FlameScene extends Phaser.Scene {
   // Phase 13: all sound is synthesized at runtime via raw Web Audio, no
   // loaded/licensed audio files -- see AudioManager and audioData.ts.
   audio = new AudioManager();
+  // Phase 14: two independent, session-only accessibility toggles. Neither
+  // gets its own state class -- each is a single boolean FlameScene owns and
+  // mutates directly, same weight as any other scene flag (controlMode,
+  // etc.), not a new category of state that would warrant a system class.
+  colorblindSafe = false;
+  reducedMotion = false;
+  // postFX controllers on the flame/core -- mutable objects Phaser returns
+  // from addGlow(), kept so updateFlameVisual() can retint them every frame
+  // alongside the existing evolvedColor computation. Undefined under a
+  // Canvas fallback (postFX is WebGL-only and silently no-ops there), so
+  // every use is optional-chained.
+  flameGlow?: Phaser.FX.Glow;
+  coreGlow?: Phaser.FX.Glow;
 
   constructor(){ super('flame'); }
+
+  // Phase 14: single accessor for "which palette is currently active" so no
+  // call site duplicates the colorblindSafe ? ... : ... check.
+  palette(): FlamePalette {
+    return activePalette(this.colorblindSafe);
+  }
 
   create(){
     this.cameras.main.setBackgroundColor('#080604');
@@ -74,9 +94,16 @@ class FlameScene extends Phaser.Scene {
       this.target.x,
       this.target.y,
       this.flameSize * 2.1,
-      FLAME_VISUAL.palette.orange,
+      this.palette().orange,
       0.08
     ).setDepth(3);
+    // Phase 14: postFX (Phaser 3.60+, WebGL-only -- silently a no-op under a
+    // Canvas fallback, so no manual fallback path needed). The halo's color
+    // is set once here and never changed per frame (only its radius/alpha
+    // are, in updateFlameVisual), and "orange" is one of the values the
+    // colorblind-safe palette leaves untouched -- so a static bloom color
+    // is correct, not just simpler, here.
+    this.halo.postFX?.addBloom(this.palette().orange, 1, 1, 1.1, 0.85, 3);
 
     this.createFlameBody();
     this.createParticles();
@@ -158,6 +185,18 @@ class FlameScene extends Phaser.Scene {
       const label = this.audio.toggleMute();
       this.game.events.emit('ui:audioMuteChanged', { label });
     });
+    // Phase 14: same request/confirm round-trip every other toggle this
+    // session uses -- FlameScene owns and mutates the real boolean, UIScene
+    // only ever renders whatever gets echoed back.
+    this.game.events.on('ui:requestToggleColorblind', () => {
+      this.colorblindSafe = !this.colorblindSafe;
+      this.recolorRibbons();
+      this.game.events.emit('ui:colorblindChanged', { on: this.colorblindSafe });
+    });
+    this.game.events.on('ui:requestToggleReducedMotion', () => {
+      this.reducedMotion = !this.reducedMotion;
+      this.game.events.emit('ui:reducedMotionChanged', { on: this.reducedMotion });
+    });
 
     this.scene.launch('ui');
   }
@@ -167,26 +206,28 @@ class FlameScene extends Phaser.Scene {
       this.target.x,
       this.target.y,
       this.flameSize,
-      FLAME_VISUAL.palette.orange,
+      this.palette().orange,
       0.9
     ).setDepth(6);
+    // Phase 14: postFX Glow on the main flame body and core -- the cheapest
+    // available meaningfully-less-flat visual upgrade Phaser's built-in
+    // post-processing offers, no shader code/assets. Controllers are
+    // returned mutable so updateFlameVisual() can retint .color every frame
+    // to track the same evolvedColor the fill itself is set to, rather than
+    // freezing the glow to whatever hue existed at creation time.
+    this.flameGlow = this.flame.postFX?.addGlow(this.palette().orange, 0, 1.4, false, 0.1, 12);
 
     this.core = this.add.ellipse(
       this.target.x,
       this.target.y,
       this.flameSize * 0.72,
       this.flameSize * 1.25,
-      FLAME_VISUAL.palette.core,
+      this.palette().core,
       0.82
     ).setDepth(7);
+    this.coreGlow = this.core.postFX?.addGlow(this.palette().core, 0, 1.1, false, 0.1, 10);
 
-    const colors = [
-      FLAME_VISUAL.palette.emberRed,
-      FLAME_VISUAL.palette.hotRed,
-      FLAME_VISUAL.palette.orange,
-      FLAME_VISUAL.palette.violet,
-      FLAME_VISUAL.palette.cyan
-    ];
+    const colors = this.ribbonColors();
 
     for(let i = 0; i < FLAME_VISUAL.motion.ribbonCount; i++){
       // no two lobes the same size or shape -- a random per-ribbon scale
@@ -215,6 +256,21 @@ class FlameScene extends Phaser.Scene {
         jitterSpeed: 0.006 + Math.random() * 0.01
       });
     }
+  }
+
+  ribbonColors(): number[] {
+    const p = this.palette();
+    return [p.emberRed, p.hotRed, p.orange, p.violet, p.cyan];
+  }
+
+  // Ribbon fill color is set once at creation and, unlike the flame/core
+  // (recolored every frame in updateFlameVisual from the live evolvedColor
+  // computation), never touched per frame -- so toggling the colorblind
+  // palette needs one explicit repaint here rather than picking the change
+  // up automatically next frame.
+  recolorRibbons(){
+    const colors = this.ribbonColors();
+    this.ribbons.forEach((ribbon, i) => ribbon.visual.setFillStyle(colors[i], ribbon.alpha));
   }
 
   emitLevelChanged(){
@@ -366,14 +422,19 @@ class FlameScene extends Phaser.Scene {
     );
     this.lastDirection = currentDirection;
 
+    // Phase 14: reduced motion dampens (doesn't zero) every sine-driven
+    // amplitude term below -- wobble, ribbon sway/jitter, halo pulsing --
+    // by the same scale factor, rather than special-casing each source.
+    const motionScale = this.reducedMotion ? ACCESSIBILITY.reducedMotionScale : 1;
+
     const wobble = 1
-      + Math.sin(t * 0.012) * (0.06 + (1 - this.stability) * 0.08)
-      + Math.sin(t * 0.027) * 0.035;
+      + Math.sin(t * 0.012) * (0.06 + (1 - this.stability) * 0.08) * motionScale
+      + Math.sin(t * 0.027) * 0.035 * motionScale;
     const speed = Phaser.Math.Clamp(this.velocity.length() / 180, 0, 1);
     const heatStretch = 1 + this.heat * 0.12;
     const flameAlpha = 0.84 + this.heat * 0.13;
 
-    const form = formForLevel(this.level);
+    const form = formForLevel(this.level, this.palette());
     const settledColor = Phaser.Display.Color.Interpolate.ColorWithColor(
       Phaser.Display.Color.ValueToColor(form.base),
       Phaser.Display.Color.ValueToColor(form.calm),
@@ -391,19 +452,24 @@ class FlameScene extends Phaser.Scene {
     this.flame.setAlpha(flameAlpha);
     this.flame.setPosition(this.flame.x, this.flame.y);
     this.flame.setFillStyle(evolvedColor, flameAlpha);
+    // Glow tracks the flame's actual current color (heat/stability-blended,
+    // evolution-form-based) rather than staying frozen at creation-time hue.
+    if(this.flameGlow) this.flameGlow.color = evolvedColor;
 
+    const coreColor = Phaser.Display.Color.ValueToColor(evolvedColor).lighten(35).color;
     this.core.setPosition(this.flame.x, this.flame.y);
     this.core.setSize(
       this.flameSize * 0.72 * (1 + speed * 0.3),
       this.flameSize * 1.25 * heatStretch
     );
-    this.core.setFillStyle(Phaser.Display.Color.ValueToColor(evolvedColor).lighten(35).color, 0.82);
+    this.core.setFillStyle(coreColor, 0.82);
     this.core.setAlpha(0.76 + this.heat * 0.2);
     this.core.rotation = currentDirection + Math.PI / 2;
+    if(this.coreGlow) this.coreGlow.color = coreColor;
 
     this.halo
       .setPosition(this.flame.x, this.flame.y)
-      .setRadius(this.flameSize * (2.0 + 0.28 * this.heat + 0.22 * Math.sin(t * 0.008)))
+      .setRadius(this.flameSize * (2.0 + 0.28 * this.heat + 0.22 * motionScale * Math.sin(t * 0.008)))
       .setAlpha(Math.min(0.19, 0.035 + this.flameSize / 700 + this.heat * 0.05));
 
     for(const ribbon of this.ribbons){
@@ -414,10 +480,10 @@ class FlameScene extends Phaser.Scene {
 
       // independent per-ribbon jitter so tips flicker/taper unevenly
       // rather than every lobe swaying in perfect lockstep
-      const jitter = Math.sin(t * ribbon.jitterSpeed + ribbon.jitterPhase) * FLAME_VISUAL.motion.tipJitter;
+      const jitter = Math.sin(t * ribbon.jitterSpeed + ribbon.jitterPhase) * FLAME_VISUAL.motion.tipJitter * motionScale;
 
       ribbon.visual.setPosition(
-        this.flame.x + s * this.flameSize * FLAME_VISUAL.motion.swayAmplitude * (0.7 + speed) * instability,
+        this.flame.x + s * this.flameSize * FLAME_VISUAL.motion.swayAmplitude * motionScale * (0.7 + speed) * instability,
         this.flame.y - c * this.flameSize * (0.22 + this.heat * 0.08)
       );
 

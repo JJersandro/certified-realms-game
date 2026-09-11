@@ -91,6 +91,28 @@ around the discrepancy silently.
    ramps the master gain to 0, which does not by itself reduce CPU work -- the oscillators/filters
    keep computing at zero output unless the context is also suspended).
 
+8. **postFX GPU cost (Phase 14).** `FlameScene` now runs three Phaser postFX pipelines every
+   frame: a `Glow` on `this.flame`, a `Glow` on `this.core`, and a `Bloom` on `this.halo` (see
+   `createFlameBody()`/`create()` in `main.ts`). These are WebGL-only (Phaser's `postFX` component
+   silently no-ops under a Canvas fallback, so there's no separate low-end code path to audit --
+   either the GPU does the work or nothing renders it) and are retinted every frame in
+   `updateFlameVisual()` (`flameGlow.color`/`coreGlow.color` tracking the live `evolvedColor`),
+   which is a cheap uniform update, not the concern -- the concern is the extra render passes
+   themselves. Three low-resolution single-object postFX passes are unlikely to matter on a
+   modern phone GPU, but this is worth a real measurement (frame time before/after, on an
+   actual or emulated low-end mobile GPU profile) rather than an assumption, and is the next
+   lever to pull down if a future audit finds a phone-class stutter that wasn't there before
+   Phase 14. If it does need trimming, cheapest-first: drop the halo's Bloom before touching
+   either Glow (the halo is the least visually load-bearing of the three), then reduce Glow
+   `quality`/`distance` params before removing a Glow outright.
+9. **Alternate-palette lookup (Phase 14).** `FlameScene.palette()` (a single `colorblindSafe ?
+   COLORBLIND_PALETTE : FLAME_VISUAL.palette` branch, see `flameVisualData.ts`'s `activePalette()`)
+   is called from `createFlameBody()` once at startup and from `updateFlameVisual()`'s
+   `formForLevel(this.level, this.palette())` every frame -- one extra boolean branch and one
+   extra small-object property lookup per frame. Negligible on its own; noted here only so a
+   future audit doesn't mistake it for an unexplained per-frame cost if profiling ever gets this
+   granular.
+
 ## How to verify, not just theorize
 
 Use a real headless run (see the `flame-playtest-verifier` agent's recipe for the dev-server +

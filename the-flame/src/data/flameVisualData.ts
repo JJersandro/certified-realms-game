@@ -75,3 +75,36 @@ export const FLAME_VISUAL = {
     keepGameMinimal: true
   }
 } as const;
+
+// Not `typeof FLAME_VISUAL.palette` -- that infers each key's `as const`
+// literal number type, which COLORBLIND_PALETTE's different hex values
+// can't satisfy. Same shape, widened to plain `number` per key.
+export type FlamePalette = { [K in keyof typeof FLAME_VISUAL.palette]: number };
+
+// Phase 14: one universal colorblind-safe alternate palette -- a deliberate
+// product decision to ship exactly one broadly-more-distinguishable palette
+// rather than separately-tuned protanopia/deuteranopia/tritanopia variants.
+// The default palette's warm reds (emberRed/hotRed) sit close to orange, and
+// its violet/magenta sit close to each other, on the red-green axis that
+// red-green color-deficient vision struggles to separate. This shifts
+// emberRed/hotRed toward the orange-yellow register and violet/magenta
+// toward blue, while leaving gold/core/cyan/orange/blue close to their
+// default values -- the blue/yellow axis is the one color-deficient vision
+// generally preserves best, so pushing the "hot" and "cool" ends of the
+// palette further apart along that axis is what actually buys real
+// distinguishability, not just a different-looking re-skin.
+export const COLORBLIND_PALETTE: FlamePalette = {
+  emberRed: 0xffa726,
+  hotRed: 0xffcf4d,
+  orange: 0xff8a18,
+  gold: 0xffc43b,
+  core: 0xfff5c9,
+  violet: 0x5b6ee1,
+  magenta: 0x1f4fd8,
+  cyan: 0x38b9e8,
+  blue: 0x2874d0
+} as const;
+
+export function activePalette(colorblindSafe: boolean): FlamePalette {
+  return colorblindSafe ? COLORBLIND_PALETTE : FLAME_VISUAL.palette;
+}
