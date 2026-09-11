@@ -26,6 +26,14 @@ The roadmap is the boundary for the first complete version. New ideas go to a pa
 
 The current prototype implements the first playable loop: mouse-following flame, inertia, touch-based burning, energy-driven growth, minimal HUD, particles, and simple burnable matter.
 
+## Certified Realms visual data
+
+The Flame now uses the **Certified Realms project as its implementation/data home**, while the supplied flame images are treated as visual reference data rather than as a replacement for the game systems.
+
+The references establish a visual direction: layered ribbon-like flame motion, a hot orange/red primary body, cooler violet/cyan/blue wisps, directional flow, transparent layers, dark negative space, and small ember particles. The extracted reference model lives at `src/data/flameVisualData.ts` and currently drives the procedural flame presentation.
+
+This is visual input for the existing roadmap, not a roadmap change. Mechanics remain governed by the locked game constitution.
+
 ## Run locally
 
 ```bash
