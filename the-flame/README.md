@@ -30,11 +30,11 @@ The references establish a visual direction: layered ribbon-like flame motion, a
 
 This is visual input for the existing roadmap, not a roadmap change. Mechanics remain governed by the locked game constitution.
 
-## Current milestone: Phase 2 — Touch & Burning
+## Current milestone: Phase 3 — Growth
 
-The flame now has a visible burn process. Matter must be physically contacted to ignite. Ignition has readable duration based on matter size, burning produces heat/ember feedback, and completed burns leave a persistent scorch trace while converting the matter into growth energy.
+Phases 1–2 established movement and contact-driven burning. Phase 3 now makes growth a visible physical state: consumed energy increases flame size, active burning raises heat and glow, movement direction affects stability, and those internal states alter stretch, wobble, ribbon motion, core brightness, and ember activity.
 
-Burned matter is not respawned in this milestone; destruction is becoming persistent state rather than a disposable collision effect.
+Burned matter remains destroyed and leaves a persistent scorch trace. No respawn loop has been introduced.
 
 ## Run locally
 
