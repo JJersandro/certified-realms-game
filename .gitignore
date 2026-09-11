@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+the-flame/node_modules
+the-flame/package-lock.json
 /.pnp
 .pnp.*
 .yarn/*
