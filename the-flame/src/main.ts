@@ -35,7 +35,7 @@ class FlameScene extends Phaser.Scene {
   target = new Phaser.Math.Vector2();
   velocity = new Phaser.Math.Vector2();
   lastDirection = 0;
-  flameSize = GROWTH.baseFlameSize;
+  flameSize: number = GROWTH.baseFlameSize;
   energy = 0;
   heat = 0;
   stability = 1;
@@ -68,16 +68,16 @@ class FlameScene extends Phaser.Scene {
     this.input.on('pointerdown', (p: Phaser.Input.Pointer)=>this.target.set(p.x, p.y));
 
     this.add.text(24, 22, 'THE FLAME', {
-      fontFamily:'Inter, sans-serif', fontSize:'12px', color:'#ffffff', alpha:.72
-    }).setDepth(10);
+      fontFamily:'Inter, sans-serif', fontSize:'12px', color:'#ffffff'
+    }).setDepth(10).setAlpha(.72);
 
     this.add.text(24, 43, 'move • touch • burn • grow', {
-      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff', alpha:.34
-    }).setDepth(10);
+      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
+    }).setDepth(10).setAlpha(.34);
 
     this.add.text(this.scale.width - 24, 22, 'SPARK', {
-      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347', alpha:.65
-    }).setOrigin(1, 0).setDepth(10).setName('stage');
+      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
+    }).setOrigin(1, 0).setDepth(10).setAlpha(.65).setName('stage');
 
     this.scale.on('resize', ()=>this.layout());
   }
@@ -130,7 +130,7 @@ class FlameScene extends Phaser.Scene {
   }
 
   createParticles(){
-    const g = this.make.graphics({x:0, y:0, add:false});
+    const g = this.make.graphics({x:0, y:0}, false);
     g.fillStyle(0xffffff, 1);
     g.fillCircle(4, 4, 4);
     g.generateTexture('particle', 8, 8);
