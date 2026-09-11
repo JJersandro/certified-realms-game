@@ -18,13 +18,18 @@ read it first if pointed to one.
   `progressionData.ts`), separate from scene/system logic. New phases add new files here, not
   more hardcoded literals in scene code.
 - **Systems extraction**: cross-cutting gameplay logic that isn't pure rendering gets its own
-  class under `the-flame/src/systems/`. Two examples now exist, and they show two valid shapes:
-  `MatterRegistry.ts` owns an array of entities and is driven by a small `Host` interface of
-  callbacks into `FlameScene` (used when the system needs to call back into scene state like
-  heat/energy); `WorldManager.ts` (Phase 5) instead takes a narrower dependency directly in its
-  constructor (`MatterRegistry`) since it only needs to drive spawning, not read scene state.
+  class under `the-flame/src/systems/`. Three shapes now exist: `MatterRegistry.ts` owns an
+  array of entities and is driven by a small `Host` interface of callbacks into `FlameScene`
+  (used when the system needs to call back into scene state like heat/energy); `WorldManager.ts`
+  (Phase 5) instead takes a narrower dependency directly in its constructor (`MatterRegistry`)
+  since it only needs to drive spawning, not read scene state; `SkillTreeManager.ts` (Phase 11)
+  takes *no* dependency at all -- it owns its state (`unlocked`, `points`, `purchased`) and
+  exposes pure query/mutate methods (`award`, `canAfford`, `purchase`, one getter per effect
+  tag), and `FlameScene` reads from it and folds the returned bonuses into its own existing
+  formulas at the point of use, rather than the skill system reaching into scene state itself.
   Prefer the narrowest dependency that works -- don't reach for a full `Host` interface if the
-  system only needs one collaborator. Extract a new system class when a phase introduces a new
+  system only needs one collaborator, and don't give a system any collaborator at all if it can
+  stay a pure state+query object. Extract a new system class when a phase introduces a new
   *category* of state (e.g. a `ChoiceManager` for Phase 8) rather than bolting more fields onto
   `FlameScene`.
 - **Single scene until Phase 12**: `FlameScene` in `main.ts` is the only Phaser Scene until the
@@ -43,6 +48,25 @@ read it first if pointed to one.
 - **Cosmetic numeral rule**: if you render any number to the player, pass it through
   `toDisplayNumber()` in `src/util/displayNumber.ts` first -- the digit 6 never appears in
   anything displayed, though it's an ordinary integer everywhere in actual game logic.
+- **Session-permanent unlocks compound multiplicatively, additively into existing formulas**:
+  Phase 11's skill tree (`skillTreeData.ts`, `SkillTreeManager.ts`) is the pattern for any future
+  "spend a currency on a permanent bonus" mechanic -- exactly 7 nodes (this game's numeric
+  identity), each tagged with one `SkillEffect` string mapping to exactly one already-existing
+  formula (contact radius, heat gain, stability floor, cascade chance, speed, xp yield, points
+  yield), summed by a getter and applied at the *existing* call site (`getFlame()`, `addHeat`,
+  the fragile-threshold check, `maxSpeed`, `tryCascade`, `finishBurn`) rather than introducing
+  parallel bonus-tracking state in `FlameScene`. No respec; purchases are permanent for the
+  session, same as everything else in this codebase persisting only in memory (no save system
+  exists yet). `ENDGAME` in `endgameData.ts` holds the escalating-world constants
+  (`firstEscalationMultiplier`, `escalationRandomRange`, `pointsBase`) -- keep this pattern (one
+  named `as const` object per concern) rather than folding unrelated constants into an existing
+  data file.
+- **Event-driven world-state checks, not per-frame polls**: detecting "the world is fully
+  consumed" (Phase 11's `FlameScene.checkWorldConsumed()`) happens inside the existing
+  `onFuelBurned` callback, the same place cascades are triggered from -- checking `fuels.every(f
+  => !f.alive)` right after a burn completes, not scanning every frame in `update()`. Follow this
+  precedent for any future "did some global condition just become true" check tied to a
+  discrete gameplay event.
 
 ## Before writing code
 

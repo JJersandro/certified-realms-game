@@ -27,15 +27,27 @@ around the discrepancy silently.
    `sum(region.baseFuelCount * rolled density)` across `WORLD.regions` in `worldData.ts`
    (currently 4 regions, ~45-65 base each, density 0.5-1.1x -> roughly 150-250 alive at once,
    spread across a 4000x3000 world well beyond the ~1024x700 viewport). Check the current
-   totals against that formula and estimate per-frame cost. Now that the world is bigger than
-   the viewport, distance-from-camera culling (skip or coarsen updates for fuel far outside the
-   visible area) is a real, concrete optimization to consider -- flag it explicitly if instance
-   counts climb further in later phases. Also flag anything O(n²) (e.g. a naive
+   totals against that formula and estimate per-frame cost. Since Phase 11, `WorldManager.
+   regenerate()` re-rolls density and repopulates on every full world clear, so this per-frame
+   fuel count resets to roughly the same 150-250 range each time (it does not compound across
+   worlds -- `MatterRegistry.fuels` is replaced wholesale, not appended to) -- confirm this stays
+   true as escalating worlds are played through repeatedly in one session. Now that the world is
+   bigger than the viewport, distance-from-camera culling (skip or coarsen updates for fuel far
+   outside the visible area) is a real, concrete optimization to consider -- flag it explicitly if
+   instance counts climb further in later phases. Also flag anything O(n²) (e.g. a naive
    cascading-ignition proximity check across all burning×idle pairs) before it ships.
 2. **Unbounded growth.** `this.scorches` (persistent burn-mark array) grows forever with no cap
    or pooling -- confirm whether this has been addressed yet (it was flagged as a known Phase 14
    item) and whether anything *else* added since has the same shape (an array that only grows,
-   objects created but never destroyed/recycled).
+   objects created but never destroyed/recycled). Phase 11 makes this worse in one specific way:
+   `WorldManager.regenerate()` fires on every full world clear within a single session (an
+   escalating-difficulty loop with no natural end), and every burn in every generated world
+   -- across however many clears a session racks up -- still pushes a scorch onto the same
+   never-cleared `this.scorches` array. A long single-session playthrough that clears many worlds
+   is a more realistic way to hit a large scorch count than Phase 4-10 assumed. `SkillTreeManager`
+   itself is not a growth risk (`purchased` is a `Set` capped at 7 possible entries, one per
+   node), but confirm nothing about the skill tree HUD (button + up to 7 line objects, created
+   once in `createSkillTreeUI()`) is being recreated per-frame or per-clear rather than reused.
 3. **Touch input correctness.** Phaser's `pointermove`/`pointerdown` already unify mouse and
    touch, but verify on an actual touch-emulated viewport (Playwright's `page.emulate` or a
    touch-capable device profile) that: the flame follows a finger drag smoothly, there's no

@@ -7,9 +7,12 @@ import { formForLevel } from './data/evolutionData';
 import { WORLD } from './data/worldData';
 import { TILT_CONTROL } from './data/tiltData';
 import { RISK } from './data/riskData';
+import { ENDGAME } from './data/endgameData';
+import { SKILL_TREE, SkillNode } from './data/skillTreeData';
 import { MatterRegistry } from './systems/MatterRegistry';
 import { WorldManager } from './systems/WorldManager';
 import { TiltControl } from './systems/TiltControl';
+import { SkillTreeManager } from './systems/SkillTreeManager';
 import { toDisplayNumber } from './util/displayNumber';
 
 type ControlMode = 'touch' | 'gyroscope';
@@ -48,6 +51,15 @@ class FlameScene extends Phaser.Scene {
   ribbons: Ribbon[] = [];
   scorches: Phaser.GameObjects.Arc[] = [];
   particles!: Phaser.GameObjects.Particles.ParticleEmitter;
+  // Phase 11: planetary/world endgame -- worldStrength escalates every full
+  // clear (see checkWorldConsumed()) and drives tougher matter HP on the
+  // next generated world; worldsCleared distinguishes the first clear's
+  // flat escalation from every subsequent clear's random one.
+  skillTree = new SkillTreeManager();
+  worldStrength = 1.0;
+  worldsCleared = 0;
+  skillTreeListOpen = false;
+  skillTreeLines: Phaser.GameObjects.Text[] = [];
 
   constructor(){ super('flame'); }
 
@@ -77,8 +89,14 @@ class FlameScene extends Phaser.Scene {
         size: this.flameSize,
         level: this.level,
         contactRadiusMultiplier: capabilitiesForLevel(this.level).contactRadiusMultiplier
+          * (1 + this.skillTree.contactRadiusBonus()),
+        cascadeChanceBonus: this.skillTree.cascadeChanceBonus(),
+        xpYieldMultiplier: 1 + this.skillTree.xpYieldBonus()
       }),
-      addHeat: (amount) => { this.heat = Math.min(GROWTH.maxHeat, this.heat + amount); },
+      addHeat: (amount) => {
+        const eased = amount * (1 - this.skillTree.heatRiseReductionBonus());
+        this.heat = Math.min(GROWTH.maxHeat, this.heat + eased);
+      },
       applyStabilityPenalty: (amount) => {
         this.stability = Phaser.Math.Clamp(this.stability - amount, GROWTH.minStability, GROWTH.maxStability);
       },
@@ -90,11 +108,12 @@ class FlameScene extends Phaser.Scene {
           GROWTH.baseFlameSize + Math.sqrt(this.energy) * GROWTH.sizeEnergyFactor
         );
         this.tryLevelUp();
+        this.checkWorldConsumed();
       }
     });
 
     this.world = new WorldManager(this.matterSystem);
-    this.world.populate();
+    this.world.populate(this.worldStrength);
 
     this.cameras.main.startFollow(this.flame, true, 0.09, 0.09);
 
@@ -105,9 +124,18 @@ class FlameScene extends Phaser.Scene {
 
     tiltButton.on('pointerdown', () => this.toggleControlMode(tiltButton));
 
+    this.createSkillTreeUI();
+
     const aimAt = (p: Phaser.Input.Pointer) => {
       if(this.controlMode !== 'touch') return;
       if(Phaser.Geom.Rectangle.Contains(tiltButton.getBounds(), p.x, p.y)) return;
+      const skillButton = this.children.getByName('skillTreeButton') as Phaser.GameObjects.Text | null;
+      if(skillButton?.visible && Phaser.Geom.Rectangle.Contains(skillButton.getBounds(), p.x, p.y)) return;
+      if(this.skillTreeListOpen){
+        for(const line of this.skillTreeLines){
+          if(line.visible && Phaser.Geom.Rectangle.Contains(line.getBounds(), p.x, p.y)) return;
+        }
+      }
       const world = this.cameras.main.getWorldPoint(p.x, p.y);
       this.target.set(world.x, world.y);
     };
@@ -228,6 +256,107 @@ class FlameScene extends Phaser.Scene {
   tryLevelDown(){
     while(this.level > 1 && this.flameSize < PROGRESSION.minFlameSizeForLevel(this.level)){
       this.level--;
+    }
+  }
+
+  // Phase 11: event-driven (called from onFuelBurned, same pattern as
+  // cascades), not a per-frame poll. The world is "consumed" once every
+  // fuel instance ever spawned into it -- including ones burned in prior
+  // worlds before a regenerate() -- has alive === false. Because
+  // MatterRegistry.finishBurn sets fuel.alive = false before invoking this
+  // callback, and regenerate() replaces the whole fuels array in one
+  // synchronous call, this check is always evaluated against exactly the
+  // world currently in play.
+  checkWorldConsumed(){
+    if(this.matterSystem.fuels.length === 0) return;
+    if(!this.matterSystem.fuels.every(f => !f.alive)) return;
+
+    const wasUnlocked = this.skillTree.unlocked;
+    this.skillTree.unlocked = true;
+
+    // Points scale with the strength of the world just cleared, computed
+    // BEFORE escalating worldStrength for the next world.
+    const pointsAwarded = Math.round(
+      ENDGAME.pointsBase * this.worldStrength * (1 + this.skillTree.pointsYieldBonus())
+    );
+    this.skillTree.award(pointsAwarded);
+
+    if(this.worldsCleared === 0){
+      this.worldStrength *= ENDGAME.firstEscalationMultiplier;
+    } else {
+      const [min, max] = ENDGAME.escalationRandomRange;
+      this.worldStrength *= 1 + Phaser.Math.FloatBetween(min, max);
+    }
+    this.worldsCleared++;
+
+    // Flame keeps its current level/size/evolution/heat/stability -- only
+    // the world's fuel/matter resets and gets tougher.
+    this.world.regenerate(this.worldStrength);
+
+    if(!wasUnlocked) this.revealSkillTreeUI();
+    this.refreshSkillTreeUI();
+  }
+
+  createSkillTreeUI(){
+    const button = this.add.text(this.scale.width - 24, this.scale.height - 32, 'SKILL TREE: 0 PTS', {
+      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(.6).setName('skillTreeButton')
+      .setInteractive({ useHandCursor: true }).setVisible(false);
+
+    button.on('pointerdown', () => this.toggleSkillTreeList());
+
+    for(const node of SKILL_TREE){
+      const line = this.add.text(this.scale.width - 24, this.scale.height - 32, '', {
+        fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
+      }).setOrigin(1, 0).setScrollFactor(0).setDepth(10)
+        .setInteractive({ useHandCursor: true }).setVisible(false);
+      line.on('pointerdown', () => this.trySkillPurchase(node));
+      this.skillTreeLines.push(line);
+    }
+
+    this.layoutSkillTreeUI();
+  }
+
+  revealSkillTreeUI(){
+    (this.children.getByName('skillTreeButton') as Phaser.GameObjects.Text | null)?.setVisible(true);
+  }
+
+  toggleSkillTreeList(){
+    this.skillTreeListOpen = !this.skillTreeListOpen;
+    this.refreshSkillTreeUI();
+  }
+
+  trySkillPurchase(node: SkillNode){
+    if(this.skillTree.purchase(node)) this.refreshSkillTreeUI();
+  }
+
+  refreshSkillTreeUI(){
+    const button = this.children.getByName('skillTreeButton') as Phaser.GameObjects.Text | null;
+    if(!button || !this.skillTree.unlocked) return;
+
+    button.setText(`SKILL TREE: ${toDisplayNumber(this.skillTree.points)} PTS`);
+
+    SKILL_TREE.forEach((node, i) => {
+      const line = this.skillTreeLines[i];
+      const owned = this.skillTree.purchased.has(node.id);
+      const afford = this.skillTree.canAfford(node);
+
+      line.setText(`${node.name} — ${toDisplayNumber(node.cost)}${owned ? ' (owned)' : ''}`);
+      line.setVisible(this.skillTreeListOpen);
+      line.setAlpha(owned ? 0.35 : afford ? 0.9 : 0.45);
+      line.setColor(owned ? '#7fffb0' : afford ? '#ffb347' : '#888888');
+    });
+  }
+
+  layoutSkillTreeUI(){
+    const button = this.children.getByName('skillTreeButton') as Phaser.GameObjects.Text | null;
+    if(!button) return;
+
+    button.setPosition(this.scale.width - 24, this.scale.height - 32);
+
+    for(let i = 0; i < this.skillTreeLines.length; i++){
+      const fromBottom = this.skillTreeLines.length - i;
+      this.skillTreeLines[i].setPosition(this.scale.width - 24, this.scale.height - 32 - fromBottom * 18);
     }
   }
 
@@ -361,7 +490,8 @@ class FlameScene extends Phaser.Scene {
 
     this.velocity.lerp(desired, Math.min(1, dtS * 5.5));
 
-    const maxSpeed = (90 + this.flameSize * 8) * capabilitiesForLevel(this.level).speedMultiplier;
+    const maxSpeed = (90 + this.flameSize * 8) * capabilitiesForLevel(this.level).speedMultiplier
+      * (1 + this.skillTree.speedBonus());
     if(this.velocity.length() > maxSpeed) this.velocity.setLength(maxSpeed);
 
     this.flame.x = Phaser.Math.Clamp(this.flame.x + this.velocity.x * dtS, 10, WORLD.width - 10);
@@ -369,7 +499,8 @@ class FlameScene extends Phaser.Scene {
 
     this.heat = Math.max(0, this.heat - GROWTH.heatDecayPerSecond * dtS);
 
-    if(this.heat >= RISK.overheatThreshold || this.stability <= RISK.fragileThreshold){
+    const fragileThreshold = RISK.fragileThreshold - this.skillTree.stabilityFloorBonus();
+    if(this.heat >= RISK.overheatThreshold || this.stability <= fragileThreshold){
       const targetSize = Math.max(GROWTH.baseFlameSize, this.flameSize - RISK.shrinkPerSecond * dtS);
       if(targetSize < this.flameSize){
         const targetEnergy = Math.pow((targetSize - GROWTH.baseFlameSize) / GROWTH.sizeEnergyFactor, 2);
@@ -397,6 +528,7 @@ class FlameScene extends Phaser.Scene {
     (this.children.getByName('stage') as Phaser.GameObjects.Text)?.setPosition(this.scale.width - 24, 22);
     (this.children.getByName('level') as Phaser.GameObjects.Text)?.setPosition(this.scale.width - 24, 43);
     (this.children.getByName('tiltButton') as Phaser.GameObjects.Text)?.setPosition(24, this.scale.height - 32);
+    this.layoutSkillTreeUI();
   }
 }
 

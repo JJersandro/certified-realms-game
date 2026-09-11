@@ -154,7 +154,31 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    ```
    Clean up any temp driver scripts you placed in a global `node_modules` directory -- don't
    leave stray files there.
-8. **Testing gyroscope/tilt control**: click the `TILT` button (bottom-left, screen-space fixed
+8. **Verifying Phase 11's world-clear/skill-tree loop.** Organically burning every one of the
+   ~150-250 fuel instances in a world within a short automated run is not feasible -- it hits the
+   exact same reproducibility wall described above for cascades/heat thresholds, just at a much
+   larger scale (hundreds of co-located burns, not two or three). The reliable way to exercise the
+   *real* `checkWorldConsumed()`/`WorldManager.regenerate()` code path without waiting out an
+   organic clear: temporarily expose the game instance on `window` (e.g. add `(window as
+   any).__game = new Phaser.Game({...})` right after construction in `main.ts`, run the
+   verification, then revert that one line before finishing -- it is a debug scaffold, not a
+   shipped feature and must not appear in the committed diff). From there, `page.evaluate()` can
+   reach `window.__game.scene.getScene('flame')`, force every fuel's `alive` to `false`
+   (`scene.matterSystem.fuels`), and call `scene.checkWorldConsumed()` directly -- this still runs
+   the production method, only the "did the player actually burn all of it" precondition is
+   short-circuited. Confirm: `worldStrength` jumps by exactly `ENDGAME.firstEscalationMultiplier`
+   on the first clear and by a random factor inside `ENDGAME.escalationRandomRange` on the second;
+   `skillTree.unlocked` flips true and stays true; `skillTree.points` matches
+   `round(pointsBase * worldStrength-before-escalation * (1 + pointsYieldBonus))`; and
+   `matterSystem.fuels` ends up fully alive again at a fresh (not cumulative) count after
+   `regenerate()`. Then verify the HUD for real, not just state: the `SKILL TREE: N PTS` button
+   appears bottom-right (screen-space fixed, must not visually collide with `TILT` at
+   bottom-left), `page.mouse.click()` on it toggles a vertical list of the 7 node names + costs
+   above it, and clicking an affordable line's bounds (from `line.getBounds()`) actually purchases
+   it -- check the line's own text flips to include "(owned)" and its color/alpha changes,
+   confirming the click-guard in the shared `pointerdown`/`aimAt` handler is correctly excluding
+   these new elements from steering the flame (the flame should not move when these are clicked).
+9. **Testing gyroscope/tilt control**: click the `TILT` button (bottom-left, screen-space fixed
    via `scrollFactor(0)`, so its coordinates don't move with the camera) with
    `page.mouse.click()`. In this container's headless Chromium, `DeviceOrientationEvent` exists
    (so `enable()` resolves `granted`) but **no event ever actually fires** -- not even a spurious

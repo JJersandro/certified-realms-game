@@ -35,6 +35,11 @@ export type FlameSnapshot = {
   // contactRadiusMultiplier, so higher tiers reach further as well as
   // moving faster.
   contactRadiusMultiplier: number;
+  // Phase 11 skill tree bonuses -- MatterRegistry has no direct reference
+  // to SkillTreeManager, so these arrive pre-computed each frame via
+  // getFlame() rather than reaching for a new Host callback.
+  cascadeChanceBonus: number;
+  xpYieldMultiplier: number;
 };
 
 export type MatterHost = {
@@ -68,8 +73,11 @@ export class MatterRegistry {
 
   // bounds/weights default to the whole viewport and MATTER's own global
   // weights (Phase 4 behavior) -- pass a world region's bounds/tierWeights
-  // to spawn scoped to that region instead (see WorldManager).
-  spawnFuel(bounds?: SpawnBounds, weights: readonly number[] = defaultSpawnWeights){
+  // to spawn scoped to that region instead (see WorldManager). hpMultiplier
+  // is Phase 11's world-escalation knob -- WorldManager passes the current
+  // worldStrength so every subsequent world's matter is tougher, not just
+  // more numerous.
+  spawnFuel(bounds?: SpawnBounds, weights: readonly number[] = defaultSpawnWeights, hpMultiplier = 1){
     const scene = this.host.scene;
     const margin = 45;
     const b = bounds ?? { x: 0, y: 0, w: scene.scale.width, h: scene.scale.height };
@@ -81,7 +89,7 @@ export class MatterRegistry {
 
     const tier = this.pickTier(weights);
     const r = Phaser.Math.Between(tier.radiusMin, tier.radiusMax);
-    const maxHp = r * tier.maxHpPerRadius;
+    const maxHp = r * tier.maxHpPerRadius * hpMultiplier;
 
     const visual = scene.add.circle(x, y, r, tier.color, 0.78).setDepth(1);
     const burnVisual = scene.add.circle(x, y, r * 0.65, FLAME_VISUAL.palette.core, 0)
@@ -125,7 +133,8 @@ export class MatterRegistry {
     for(const other of this.fuels){
       if(other === source || !other.alive || other.burnState !== 'idle') continue;
       if(flame.level < other.tier.minLevelToIgnite) continue;
-      if(Math.random() >= source.tier.cascadeChance) continue;
+      const cascadeChance = Math.min(1, source.tier.cascadeChance + flame.cascadeChanceBonus);
+      if(Math.random() >= cascadeChance) continue;
 
       const dist = Phaser.Math.Distance.Between(source.x, source.y, other.x, other.y);
       if(dist > radius) continue;
@@ -135,14 +144,15 @@ export class MatterRegistry {
     }
   }
 
-  finishBurn(fuel: Fuel){
+  finishBurn(fuel: Fuel, flame: FlameSnapshot){
     if(!fuel.alive) return;
 
     fuel.alive = false;
     fuel.burnState = 'idle';
-    const xpYield = fuel.forcedBonus
+    const baseXp = fuel.forcedBonus
       ? fuel.xpYield * CHOICES.riskyIgnition.xpBonusMultiplier
       : fuel.xpYield;
+    const xpYield = baseXp * flame.xpYieldMultiplier;
     this.host.onFuelBurned(xpYield);
     this.host.addHeat(fuel.r / 22);
 
@@ -230,7 +240,7 @@ export class MatterRegistry {
     this.host.particles.setPosition(fuel.x, fuel.y);
     if(Math.random() < 0.15 + progress * 0.16) this.host.particles.explode(1);
 
-    if(fuel.hp <= 0) this.finishBurn(fuel);
+    if(fuel.hp <= 0) this.finishBurn(fuel, flame);
   }
 
   updateAll(t: number, dt: number){
