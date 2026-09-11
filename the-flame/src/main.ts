@@ -5,9 +5,13 @@ import { PROGRESSION } from './data/progressionData';
 import { capabilitiesForLevel } from './data/scaleData';
 import { formForLevel } from './data/evolutionData';
 import { WORLD } from './data/worldData';
+import { TILT_CONTROL } from './data/tiltData';
 import { MatterRegistry } from './systems/MatterRegistry';
 import { WorldManager } from './systems/WorldManager';
+import { TiltControl } from './systems/TiltControl';
 import { toDisplayNumber } from './util/displayNumber';
+
+type ControlMode = 'touch' | 'gyroscope';
 
 type Ribbon = {
   visual: Phaser.GameObjects.Ellipse;
@@ -33,6 +37,8 @@ class FlameScene extends Phaser.Scene {
   level = 1;
   matterSystem!: MatterRegistry;
   world!: WorldManager;
+  tilt = new TiltControl();
+  controlMode: ControlMode = 'touch';
   ribbons: Ribbon[] = [];
   scorches: Phaser.GameObjects.Arc[] = [];
   particles!: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -86,7 +92,16 @@ class FlameScene extends Phaser.Scene {
 
     this.cameras.main.startFollow(this.flame, true, 0.09, 0.09);
 
+    const tiltButton = this.add.text(24, this.scale.height - 32, 'TILT: OFF', {
+      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
+    }).setScrollFactor(0).setDepth(10).setAlpha(.6).setName('tiltButton')
+      .setInteractive({ useHandCursor: true });
+
+    tiltButton.on('pointerdown', () => this.toggleControlMode(tiltButton));
+
     const aimAt = (p: Phaser.Input.Pointer) => {
+      if(this.controlMode !== 'touch') return;
+      if(Phaser.Geom.Rectangle.Contains(tiltButton.getBounds(), p.x, p.y)) return;
       const world = this.cameras.main.getWorldPoint(p.x, p.y);
       this.target.set(world.x, world.y);
     };
@@ -157,6 +172,38 @@ class FlameScene extends Phaser.Scene {
         alpha: 0.24 + i * 0.025
       });
     }
+  }
+
+  async toggleControlMode(button: Phaser.GameObjects.Text){
+    if(this.controlMode === 'gyroscope'){
+      this.tilt.disable();
+      this.controlMode = 'touch';
+      button.setText('TILT: OFF');
+      return;
+    }
+
+    button.setText('TILT: …');
+    const granted = await this.tilt.enable();
+    if(!granted){
+      button.setText('TILT: N/A');
+      this.time.delayedCall(1200, () => { if(this.controlMode === 'touch') button.setText('TILT: OFF'); });
+      return;
+    }
+
+    this.controlMode = 'gyroscope';
+    button.setText('TILT: ON');
+
+    // most desktops define DeviceOrientationEvent but never fire it (no
+    // sensor) -- if nothing arrives shortly, steering would otherwise go
+    // dead, so fall back to touch automatically instead.
+    this.time.delayedCall(TILT_CONTROL.fallbackTimeoutMs, () => {
+      if(this.controlMode === 'gyroscope' && !this.tilt.hasBaseline){
+        this.tilt.disable();
+        this.controlMode = 'touch';
+        button.setText('TILT: N/A');
+        this.time.delayedCall(1200, () => { if(this.controlMode === 'touch') button.setText('TILT: OFF'); });
+      }
+    });
   }
 
   tryLevelUp(){
@@ -267,6 +314,15 @@ class FlameScene extends Phaser.Scene {
 
   update(t:number, dt:number){
     const dtS = dt / 1000;
+
+    if(this.controlMode === 'gyroscope' && this.tilt.hasBaseline){
+      const steer = this.tilt.read(TILT_CONTROL.maxTiltDegrees);
+      this.target.set(
+        this.flame.x + steer.x * TILT_CONTROL.lookaheadPx,
+        this.flame.y + steer.y * TILT_CONTROL.lookaheadPx
+      );
+    }
+
     const desired = new Phaser.Math.Vector2(
       this.target.x - this.flame.x,
       this.target.y - this.flame.y
@@ -298,6 +354,7 @@ class FlameScene extends Phaser.Scene {
   layout(){
     (this.children.getByName('stage') as Phaser.GameObjects.Text)?.setPosition(this.scale.width - 24, 22);
     (this.children.getByName('level') as Phaser.GameObjects.Text)?.setPosition(this.scale.width - 24, 43);
+    (this.children.getByName('tiltButton') as Phaser.GameObjects.Text)?.setPosition(24, this.scale.height - 32);
   }
 }
 
