@@ -35,11 +35,19 @@ function buildForms(palette: FlamePalette): readonly EvolutionForm[] {
   ];
 }
 
-export const EVOLUTION = {
-  forms: buildForms(FLAME_VISUAL.palette)
-} as const;
+// formForLevel() runs every rendered frame (updateFlameVisual), but
+// activePalette() only ever returns one of two stable singleton object
+// references (the default palette or COLORBLIND_PALETTE) -- so caching by
+// reference equality means buildForms() only actually re-runs on the rare
+// colorblind toggle, not 60x/sec.
+let cachedPalette: FlamePalette | null = null;
+let cachedForms: readonly EvolutionForm[] | null = null;
 
 export function formForLevel(level: number, palette: FlamePalette = FLAME_VISUAL.palette): EvolutionForm {
   const tier = PROGRESSION.tierForLevel(level);
-  return buildForms(palette)[tier - 1];
+  if(palette !== cachedPalette){
+    cachedPalette = palette;
+    cachedForms = buildForms(palette);
+  }
+  return cachedForms![tier - 1];
 }

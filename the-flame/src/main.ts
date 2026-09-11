@@ -406,10 +406,11 @@ class FlameScene extends Phaser.Scene {
     });
   }
 
-  updateFlameVisual(t:number){
+  updateFlameVisual(t:number, dtS:number){
     const currentDirection = Math.atan2(this.velocity.y, this.velocity.x || 1);
-    let directionDelta = Phaser.Math.Angle.Wrap(currentDirection - this.lastDirection);
-    if(Math.abs(directionDelta) > Math.PI) directionDelta = 0;
+    // Phaser.Math.Angle.Wrap already clamps its result to [-PI, PI], so
+    // directionDelta can never exceed that range -- no extra guard needed.
+    const directionDelta = Phaser.Math.Angle.Wrap(currentDirection - this.lastDirection);
 
     this.stability = Phaser.Math.Clamp(
       this.stability - Math.abs(directionDelta) * GROWTH.instabilityFromDirectionChange * 0.01,
@@ -418,7 +419,7 @@ class FlameScene extends Phaser.Scene {
     );
 
     this.stability = Phaser.Math.Clamp(
-      this.stability + 0.016 * GROWTH.stabilityRecoveryPerSecond,
+      this.stability + dtS * GROWTH.stabilityRecoveryPerSecond,
       GROWTH.minStability,
       GROWTH.maxStability
     );
@@ -551,7 +552,7 @@ class FlameScene extends Phaser.Scene {
       }
     }
 
-    this.updateFlameVisual(t);
+    this.updateFlameVisual(t, dtS);
 
     this.matterSystem.updateAll(t, dt);
 

@@ -1,18 +1,18 @@
-import { WORLD, WorldRegion } from '../data/worldData';
+import { WORLD } from '../data/worldData';
 import { MatterRegistry } from './MatterRegistry';
 
 export class WorldManager {
   private densityByRegion = new Map<string, number>();
 
   constructor(private matter: MatterRegistry){
+    this.rollDensities();
+  }
+
+  private rollDensities(){
     for(const region of WORLD.regions){
       const [min, max] = region.densityRange;
       this.densityByRegion.set(region.id, min + Math.random() * (max - min));
     }
-  }
-
-  regionAt(x: number, y: number): WorldRegion | undefined {
-    return WORLD.regions.find(r => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
   }
 
   // hpMultiplier is Phase 11's world-escalation knob (see endgameData.ts) --
@@ -47,10 +47,7 @@ export class WorldManager {
   // narratively a new landscape, so it shouldn't still show the last world's
   // burns.
   regenerate(hpMultiplier = 1){
-    for(const region of WORLD.regions){
-      const [min, max] = region.densityRange;
-      this.densityByRegion.set(region.id, min + Math.random() * (max - min));
-    }
+    this.rollDensities();
     this.matter.fuels = [];
     this.matter.clearScorches();
     this.populate(hpMultiplier);
