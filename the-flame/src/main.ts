@@ -13,6 +13,7 @@ import { MatterRegistry } from './systems/MatterRegistry';
 import { WorldManager } from './systems/WorldManager';
 import { TiltControl } from './systems/TiltControl';
 import { SkillTreeManager } from './systems/SkillTreeManager';
+import { AudioManager } from './systems/AudioManager';
 import { UIScene } from './scenes/UIScene';
 
 type ControlMode = 'touch' | 'gyroscope';
@@ -58,6 +59,9 @@ class FlameScene extends Phaser.Scene {
   skillTree = new SkillTreeManager();
   worldStrength = 1.0;
   worldsCleared = 0;
+  // Phase 13: all sound is synthesized at runtime via raw Web Audio, no
+  // loaded/licensed audio files -- see AudioManager and audioData.ts.
+  audio = new AudioManager();
 
   constructor(){ super('flame'); }
 
@@ -107,7 +111,9 @@ class FlameScene extends Phaser.Scene {
         );
         this.tryLevelUp();
         this.checkWorldConsumed();
-      }
+      },
+      onIgnite: () => this.audio.playIgnite(),
+      onEmberCrackle: () => this.audio.playEmberCrackle()
     });
 
     this.world = new WorldManager(this.matterSystem);
@@ -116,6 +122,13 @@ class FlameScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.flame, true, 0.09, 0.09);
 
     const aimAt = (p: Phaser.Input.Pointer) => {
+      // Phase 13: an AudioContext starts suspended under mobile/browser
+      // autoplay policy until a user gesture resumes it. This same
+      // function is also registered on 'pointerdown' below, so the very
+      // first tap already in this game becomes the audio-unlock gesture
+      // for free -- unlock() is idempotent, so calling it again on every
+      // subsequent pointermove/pointerdown is harmless.
+      this.audio.unlock();
       if(this.controlMode !== 'touch') return;
       // Deliberate narrow exception to the event-only cross-scene rule: a
       // synchronous per-pointer-event hit test against UIScene's HUD chrome
@@ -136,7 +149,14 @@ class FlameScene extends Phaser.Scene {
     this.game.events.on('ui:requestPurchase', ({ nodeId }: { nodeId: string }) => {
       const node = SKILL_TREE.find(n => n.id === nodeId);
       if(!node) return;
-      if(this.skillTree.purchase(node)) this.emitSkillTreeChanged();
+      if(this.skillTree.purchase(node)){
+        this.emitSkillTreeChanged();
+        this.audio.playSkillPurchase();
+      }
+    });
+    this.game.events.on('ui:requestToggleMute', () => {
+      const label = this.audio.toggleMute();
+      this.game.events.emit('ui:audioMuteChanged', { label });
     });
 
     this.scene.launch('ui');
@@ -241,7 +261,10 @@ class FlameScene extends Phaser.Scene {
       if(!hasXp || !hasSize) break;
       this.level = nextLevel;
     }
-    if(this.level !== before) this.emitLevelChanged();
+    if(this.level !== before){
+      this.emitLevelChanged();
+      this.audio.playLevelUp();
+    }
   }
 
   // mirrors tryLevelUp() going the other way -- shrinking (see update())
@@ -289,6 +312,7 @@ class FlameScene extends Phaser.Scene {
     // the world's fuel/matter resets and gets tougher.
     this.world.regenerate(this.worldStrength);
 
+    this.audio.playWorldClear();
     if(!wasUnlocked) this.game.events.emit('ui:skillTreeUnlocked');
     this.emitSkillTreeChanged();
   }
@@ -443,6 +467,10 @@ class FlameScene extends Phaser.Scene {
     this.flame.y = Phaser.Math.Clamp(this.flame.y + this.velocity.y * dtS, 10, WORLD.height - 10);
 
     this.heat = Math.max(0, this.heat - GROWTH.heatDecayPerSecond * dtS);
+    // Continuous state, not a discrete event -- cheap AudioParam sets each
+    // frame, same reasoning that already justifies every other per-frame
+    // heat-driven visual update (see updateFlameVisual below).
+    this.audio.setAmbientIntensity(this.heat);
 
     const fragileThreshold = RISK.fragileThreshold - this.skillTree.stabilityFloorBonus();
     if(this.heat >= RISK.overheatThreshold || this.stability <= fragileThreshold){

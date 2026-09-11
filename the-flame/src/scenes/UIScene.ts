@@ -22,6 +22,7 @@ export class UIScene extends Phaser.Scene {
   stageLabel!: Phaser.GameObjects.Text;
   levelLabel!: Phaser.GameObjects.Text;
   tiltButton!: Phaser.GameObjects.Text;
+  soundButton!: Phaser.GameObjects.Text;
   skillTreeButton!: Phaser.GameObjects.Text;
   skillTreeLines: Phaser.GameObjects.Text[] = [];
 
@@ -54,6 +55,14 @@ export class UIScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
     this.tiltButton.on('pointerdown', () => this.game.events.emit('ui:requestToggleControlMode'));
 
+    // Bottom-center -- bottom-left (TILT) and bottom-right (SKILL TREE) are
+    // already taken. Same fixed-screen-position/click-guard pattern as both.
+    this.soundButton = this.add.text(this.scale.width / 2, this.scale.height - 32, 'SOUND: ON', {
+      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6)
+      .setInteractive({ useHandCursor: true });
+    this.soundButton.on('pointerdown', () => this.game.events.emit('ui:requestToggleMute'));
+
     this.skillTreeButton = this.add.text(this.scale.width - 24, this.scale.height - 32, 'SKILL TREE: 0 PTS', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(.6)
@@ -85,6 +94,7 @@ export class UIScene extends Phaser.Scene {
     this.game.events.on('ui:controlModeChanged', this.onControlModeChanged, this);
     this.game.events.on('ui:skillTreeUnlocked', this.onSkillTreeUnlocked, this);
     this.game.events.on('ui:skillTreeChanged', this.onSkillTreeChanged, this);
+    this.game.events.on('ui:audioMuteChanged', this.onAudioMuteChanged, this);
 
     this.scale.on('resize', () => this.layout());
 
@@ -93,6 +103,7 @@ export class UIScene extends Phaser.Scene {
       this.game.events.off('ui:controlModeChanged', this.onControlModeChanged, this);
       this.game.events.off('ui:skillTreeUnlocked', this.onSkillTreeUnlocked, this);
       this.game.events.off('ui:skillTreeChanged', this.onSkillTreeChanged, this);
+      this.game.events.off('ui:audioMuteChanged', this.onAudioMuteChanged, this);
     });
   }
 
@@ -107,6 +118,10 @@ export class UIScene extends Phaser.Scene {
 
   onSkillTreeUnlocked = () => {
     this.skillTreeButton.setVisible(true);
+  };
+
+  onAudioMuteChanged = ({ label }: { label: string }) => {
+    this.soundButton.setText(label);
   };
 
   onSkillTreeChanged = ({ points, nodes }: { points: number; nodes: SkillNodeView[] }) => {
@@ -131,6 +146,7 @@ export class UIScene extends Phaser.Scene {
   // the comment at the call site in FlameScene.aimAt for the reasoning.
   isPointOverUI(x: number, y: number): boolean {
     if(this.tiltButton.visible && Phaser.Geom.Rectangle.Contains(this.tiltButton.getBounds(), x, y)) return true;
+    if(this.soundButton.visible && Phaser.Geom.Rectangle.Contains(this.soundButton.getBounds(), x, y)) return true;
     if(this.skillTreeButton.visible && Phaser.Geom.Rectangle.Contains(this.skillTreeButton.getBounds(), x, y)) return true;
     for(const line of this.skillTreeLines){
       if(line.visible && Phaser.Geom.Rectangle.Contains(line.getBounds(), x, y)) return true;
@@ -142,6 +158,7 @@ export class UIScene extends Phaser.Scene {
     this.stageLabel.setPosition(this.scale.width - 24, 22);
     this.levelLabel.setPosition(this.scale.width - 24, 43);
     this.tiltButton.setPosition(24, this.scale.height - 32);
+    this.soundButton.setPosition(this.scale.width / 2, this.scale.height - 32);
     this.skillTreeButton.setPosition(this.scale.width - 24, this.scale.height - 32);
     for(let i = 0; i < this.skillTreeLines.length; i++){
       const fromBottom = this.skillTreeLines.length - i;

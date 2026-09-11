@@ -218,6 +218,55 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    touch/pointer steering resumes cleanly afterward) -- report it as such rather than claiming the
    actual tilt-steering math was exercised.
 
+10. **Verifying Phase 13's audio (all synthesized via raw Web Audio, no loaded sound files).**
+    Headless Chromium genuinely produces audio output (it's not a stub), but this environment has
+    no way to capture or meaningfully analyze that output -- **do not** attempt to record/FFT the
+    audio; it is not a signal worth chasing here. Verify correctness through the state and error
+    channels instead, exactly the same evidence-shape already used for tilt/heat/cascade
+    reproducibility above:
+    - **`AudioContext.state` transitions**, via a *temporary* debug hook. This game has no
+      permanent `window.__game` handle (unlike some driver-script assumptions above written for
+      state inspection generally) -- to reach `FlameScene.audio` from `page.evaluate()`, add one
+      throwaway line right after `new Phaser.Game({...})` in `main.ts`
+      (`(window as any).__game = <that game instance>`), run verification, then revert the line
+      before finishing -- it must not appear in the committed diff, same discipline as the
+      Phase 11 world-clear debug-hook technique. From there:
+      `window.__game.scene.getScene('flame').audio['context'].state` should read `'suspended'`
+      before any pointer gesture and `'running'` immediately after a `page.mouse.down()`/`up()` --
+      this is the actual proof `unlock()` is wired to the existing pointerdown handler correctly,
+      not just that the game loaded. To verify the Page Visibility throttling, dispatch a
+      synthetic event rather than trying to actually background the Playwright tab:
+      `Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'))` should drive `context.state` to
+      `'suspended'`, and the same with `value: false` should drive it back to `'running'`.
+    - **Console/pageerror absence** around every audio-triggering action (the existing
+      `page.on('console', ...)`/`page.on('pageerror', ...)` listeners already catch this) --
+      `AudioNode` creation/connection throwing (e.g. a filter frequency out of range, connecting a
+      stopped oscillator) surfaces here, not in a screenshot.
+    - **Discrete sound triggers are awkward to hit organically** (ignite/ember-crackle need real
+      contact, level-up/world-clear/skill-purchase need real progress) -- reuse the same
+      `page.evaluate()` direct-state-mutation techniques already established above (force
+      `fuel.alive = false` + call `scene.checkWorldConsumed()` for the world-clear fanfare; set
+      `scene.energy`/`scene.flameSize` past a threshold + call `scene.tryLevelUp()` for the chime;
+      emit `'ui:requestPurchase'` after setting `scene.skillTree.points` high enough for the blip)
+      to exercise the real production code path deterministically rather than waiting out organic
+      triggers, then confirm via absence of errors (there is no return value or visible state
+      change from a `play*()` call itself to assert on beyond "it didn't throw").
+    - **The new HUD mute button's visible label state** is the one part of this phase that *is*
+      normal DOM/canvas verification, no different from any other button: read
+      `window.__game.scene.getScene('ui').soundButton.text` before and after a
+      `page.mouse.click()` at the button's screen position (bottom-center, `scale.width/2,
+      scale.height-32`) and confirm it flips `'SOUND: ON'` <-> `'SOUND: OFF'`; also confirm via
+      `flame.x`/`flame.y` before/after that click that the flame did not steer (the same
+      `isPointOverUI` click-guard proof already established for TILT/SKILL TREE, now covering a
+      third button in the middle of the bottom edge).
+    - Bottom line: a clean `tsc --noEmit`/`vite build`, an observed `suspended` -> `running`
+      transition on gesture and on visibility change, zero console errors across every audio
+      action, and a correctly-toggling mute-button label together are the complete, meaningful
+      verification surface for this phase in a headless environment -- there is no stronger check
+      available here, and don't invent one (e.g. don't try to assert specific frequency/gain
+      values from outside the closure; `AudioManager`'s internals are intentionally private).
+
 ## Report
 
 State plainly what you verified and how (which screenshot showed what), any console errors

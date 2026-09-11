@@ -85,6 +85,31 @@ read it first if pointed to one.
   => !f.alive)` right after a burn completes, not scanning every frame in `update()`. Follow this
   precedent for any future "did some global condition just become true" check tied to a
   discrete gameplay event.
+- **All audio is synthesized at runtime via the raw Web Audio API, no loaded/licensed sound
+  files**: Phase 13 (`src/data/audioData.ts`, `src/systems/AudioManager.ts`) extends the game's
+  "everything is procedural, nothing is an asset" identity (established for visuals since Phase
+  1) to sound -- oscillators, one reusable noise `AudioBuffer` for filtered-noise bursts, and
+  `GainNode`/`BiquadFilterNode` envelopes, not Phaser's asset-based Sound Manager. `AudioManager`
+  is a pure state+query object (`SkillTreeManager`-shaped, no host dependency) that owns a single
+  `AudioContext` and one master `GainNode` everything routes through, exposing one method per
+  discrete sound effect (`playIgnite`, `playEmberCrackle`, `playLevelUp`, `playWorldClear`,
+  `playSkillPurchase`) plus `setAmbientIntensity(heat)` for a continuously-modulated background
+  drone and `toggleMute()`/`unlock()` for session control. Discrete sounds are triggered from the
+  same call sites that already emit the matching `'ui:xChanged'` event or drive the matching
+  visual reaction (e.g. `MatterRegistry.ignite()` -- the single choke point every ignition path
+  already funnels through -- gained an `onIgnite` `MatterHost` callback right alongside the
+  existing visual/heat side effects there, rather than a parallel audio-triggering codepath).
+  Continuous state (the ambient drone's heat-driven intensity) is set every frame like any other
+  heat-driven visual property, not gated behind an event. `AudioContext` starts `suspended` under
+  mobile/browser autoplay policy -- `unlock()` (`context.resume()`, idempotent) is called from
+  the same pointer handler that already existed for aiming, so the game's first tap doubles as
+  the audio-unlock gesture with no new UI. `AudioManager` also suspends/resumes the whole context
+  on `document.visibilitychange` so a backgrounded tab doesn't keep an inaudible ambient drone
+  (or any oscillator graph) burning CPU/battery. The mute toggle (`UIScene`'s bottom-center
+  `SOUND: ON`/`OFF` button) follows the exact `'ui:requestToggleMute'` / `'ui:audioMuteChanged'`
+  round-trip shape Phase 12 established for the TILT button. Any future sound effect should add
+  one named tunable block to `audioData.ts` and one method to `AudioManager`, not inline Web
+  Audio calls in scene code.
 
 ## Before writing code
 

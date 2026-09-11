@@ -68,8 +68,28 @@ around the discrepancy silently.
    visibility-based throttling -- e.g. does the game pause or reduce particle emission when the
    tab/app is backgrounded (`document.visibilitychange` / Phaser's own pause-on-blur)? A phone
    game that drains battery in the background is an instant one-star review, not a nitpick.
-6. **Asset weight.** Once Phase 13 (Audio) lands, check actual audio file sizes and formats
-   (compressed, phone-appropriate codecs) rather than assuming.
+6. **Asset weight.** Phase 13 (Audio) landed with zero audio files -- every sound is synthesized
+   at runtime via the raw Web Audio API (`src/systems/AudioManager.ts`, `src/data/audioData.ts`),
+   the same "no external assets" identity the rest of the game already has, so there is no
+   file-size/codec concern to check here; don't flag this as an open item.
+7. **Continuous audio CPU/battery cost.** `AudioManager` runs one `AudioContext` with an always-on
+   ambient-drone oscillator -> `BiquadFilterNode` -> `GainNode` graph for the entire session once
+   unlocked, plus short-lived oscillator/`AudioBufferSourceNode` graphs per discrete sound
+   (ignite ping, ember crackle, level-up chime, world-clear fanfare, skill-purchase blip) that are
+   each connected, played, and left to be garbage-collected after `stop()` -- confirm nothing is
+   accumulating unstopped/unconnected nodes if a future phase adds more sounds (check via the
+   `AudioContext`'s node count is not directly inspectable, but a long play session with no memory
+   growth and no audible degradation is the practical proxy). The continuous per-frame
+   `setAmbientIntensity(heat)` call from `FlameScene.update()` is cheap (a few `AudioParam.value`
+   sets, no envelope scheduling) and not a frame-budget concern. The real mobile/battery risk is
+   the ambient drone running (and the `AudioContext` processing audio) even when the tab/app is
+   backgrounded -- `AudioManager` already addresses this by suspending the whole `AudioContext` on
+   `document.visibilitychange` -> hidden and resuming on visible (Web Audio has no per-node pause,
+   so suspending the context is what actually stops the ambient oscillator from processing).
+   Confirm this still holds as an invariant if `AudioManager` changes: any new continuously-running
+   node must also go silent/stop processing when backgrounded, not just when muted (mute only
+   ramps the master gain to 0, which does not by itself reduce CPU work -- the oscillators/filters
+   keep computing at zero output unless the context is also suspended).
 
 ## How to verify, not just theorize
 

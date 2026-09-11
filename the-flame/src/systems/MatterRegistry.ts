@@ -4,6 +4,7 @@ import { BURNING } from '../data/burningData';
 import { GROWTH } from '../data/growthData';
 import { MATTER, MatterTier } from '../data/matterData';
 import { CHOICES } from '../data/choiceData';
+import { AUDIO } from '../data/audioData';
 
 type BurnState = 'idle' | 'burning';
 
@@ -50,6 +51,11 @@ export type MatterHost = {
   addHeat: (amount: number) => void;
   applyStabilityPenalty: (amount: number) => void;
   onFuelBurned: (xpYield: number) => void;
+  // Phase 13: pure "something happened" notifications for AudioManager --
+  // MatterRegistry has no direct reference to it, same reasoning as the
+  // getFlame() skill-tree bonuses above.
+  onIgnite: () => void;
+  onEmberCrackle: () => void;
 };
 
 const defaultSpawnWeights = MATTER.map(tier => tier.spawnWeight);
@@ -115,6 +121,11 @@ export class MatterRegistry {
 
   ignite(fuel: Fuel){
     if(fuel.burnState !== 'idle') return;
+    // Single choke point every ignition path (direct contact, forced hold,
+    // cascade link) funnels through -- wiring the ping here for free gives
+    // a rapid-fire ignite-ping texture during a cascade chain with no
+    // extra cascade-specific sound.
+    this.host.onIgnite();
     fuel.burnState = 'burning';
     fuel.visual.setAlpha(0.42);
     fuel.burnVisual.setAlpha(BURNING.burnPulse.alpha);
@@ -239,6 +250,11 @@ export class MatterRegistry {
 
     this.host.particles.setPosition(fuel.x, fuel.y);
     if(Math.random() < 0.15 + progress * 0.16) this.host.particles.explode(1);
+    // Same ember-particle-chance shape, but divided down so ~150-250
+    // simultaneously-burning fuel instances in a dense cluster don't turn
+    // into audio mush -- an independent random draw, not reusing the
+    // particle roll above.
+    if(Math.random() < (0.15 + progress * 0.16) / AUDIO.emberCrackle.probabilityDivisor) this.host.onEmberCrackle();
 
     if(fuel.hp <= 0) this.finishBurn(fuel, flame);
   }
