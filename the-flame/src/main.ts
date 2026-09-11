@@ -21,6 +21,11 @@ type Ribbon = {
   width: number;
   height: number;
   alpha: number;
+  // photographic-fire-study: distinct per-ribbon proportions and an
+  // independent jitter phase/speed so no two lobes move identically
+  lobeScale: number;
+  jitterPhase: number;
+  jitterSpeed: number;
 };
 
 class FlameScene extends Phaser.Scene {
@@ -155,11 +160,16 @@ class FlameScene extends Phaser.Scene {
     ];
 
     for(let i = 0; i < FLAME_VISUAL.motion.ribbonCount; i++){
+      // no two lobes the same size or shape -- a random per-ribbon scale
+      // on top of the index-based progression, rather than a perfectly
+      // uniform sequence
+      const lobeScale = 1 + (Math.random() * 2 - 1) * FLAME_VISUAL.motion.lobeVariance;
+
       const visual = this.add.ellipse(
         this.target.x,
         this.target.y,
-        this.flameSize * (0.44 + i * 0.035),
-        this.flameSize * (1.7 + (i % 2) * 0.35),
+        this.flameSize * (0.44 + i * 0.035) * lobeScale,
+        this.flameSize * (1.7 + (i % 2) * 0.35) * lobeScale,
         colors[i],
         FLAME_VISUAL.presentation.preferLayeredTransparency ? 0.24 + i * 0.025 : 0.8
       ).setDepth(5).setBlendMode(Phaser.BlendModes.ADD);
@@ -170,7 +180,10 @@ class FlameScene extends Phaser.Scene {
         speed: FLAME_VISUAL.motion.twistFrequency[i % FLAME_VISUAL.motion.twistFrequency.length],
         width: 1 + i * 0.08,
         height: 1 + i * 0.16,
-        alpha: 0.24 + i * 0.025
+        alpha: 0.24 + i * 0.025,
+        lobeScale,
+        jitterPhase: Math.random() * Math.PI * 2,
+        jitterSpeed: 0.006 + Math.random() * 0.01
       });
     }
   }
@@ -308,16 +321,20 @@ class FlameScene extends Phaser.Scene {
       const stretch = 1 + speed * FLAME_VISUAL.motion.stretch * 0.18 + this.heat * 0.16;
       const instability = 1 + (1 - this.stability) * 0.28;
 
+      // independent per-ribbon jitter so tips flicker/taper unevenly
+      // rather than every lobe swaying in perfect lockstep
+      const jitter = Math.sin(t * ribbon.jitterSpeed + ribbon.jitterPhase) * FLAME_VISUAL.motion.tipJitter;
+
       ribbon.visual.setPosition(
         this.flame.x + s * this.flameSize * FLAME_VISUAL.motion.swayAmplitude * (0.7 + speed) * instability,
         this.flame.y - c * this.flameSize * (0.22 + this.heat * 0.08)
       );
 
       ribbon.visual.setSize(
-        this.flameSize * (0.38 + ribbon.width * 0.05) * (1 + this.heat * 0.08),
-        this.flameSize * (1.45 + ribbon.height * 0.15) * stretch
+        this.flameSize * (0.38 + ribbon.width * 0.05) * ribbon.lobeScale * (1 + this.heat * 0.08 + jitter),
+        this.flameSize * (1.45 + ribbon.height * 0.15) * ribbon.lobeScale * stretch * (1 - jitter * 0.6)
       );
-      ribbon.visual.rotation = currentDirection + Math.PI / 2 + s * (0.28 + this.heat * 0.1);
+      ribbon.visual.rotation = currentDirection + Math.PI / 2 + s * (0.28 + this.heat * 0.1) + jitter * 0.3;
       ribbon.visual.setAlpha(Math.min(0.38, ribbon.alpha + this.flameSize / 5000 + this.heat * 0.05));
     }
   }
