@@ -1,23 +1,9 @@
 import Phaser from 'phaser';
 import { FLAME_VISUAL } from './data/flameVisualData';
-import { BURNING } from './data/burningData';
 import { GROWTH } from './data/growthData';
-
-type BurnState = 'idle' | 'burning';
-
-type Fuel = {
-  x: number;
-  y: number;
-  r: number;
-  energy: number;
-  alive: boolean;
-  pulse: number;
-  kind: number;
-  burnState: BurnState;
-  burnRemaining: number;
-  visual: Phaser.GameObjects.Arc;
-  burnVisual: Phaser.GameObjects.Arc;
-};
+import { PROGRESSION } from './data/progressionData';
+import { MatterRegistry } from './systems/MatterRegistry';
+import { toDisplayNumber } from './util/displayNumber';
 
 type Ribbon = {
   visual: Phaser.GameObjects.Ellipse;
@@ -40,7 +26,9 @@ class FlameScene extends Phaser.Scene {
   heat = 0;
   stability = 1;
   burned = 0;
-  fuels: Fuel[] = [];
+  xp = 0;
+  level = 1;
+  matterSystem!: MatterRegistry;
   ribbons: Ribbon[] = [];
   scorches: Phaser.GameObjects.Arc[] = [];
   particles!: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -62,7 +50,25 @@ class FlameScene extends Phaser.Scene {
     this.createFlameBody();
     this.createParticles();
 
-    for(let i = 0; i < 180; i++) this.spawnFuel();
+    this.matterSystem = new MatterRegistry({
+      scene: this,
+      particles: this.particles,
+      scorches: this.scorches,
+      getFlame: () => ({ x: this.flame.x, y: this.flame.y, size: this.flameSize, level: this.level }),
+      addHeat: (amount) => { this.heat = Math.min(GROWTH.maxHeat, this.heat + amount); },
+      onFuelBurned: (xpYield) => {
+        this.energy += xpYield;
+        this.xp += xpYield;
+        this.burned++;
+        this.flameSize = Math.min(
+          GROWTH.maxFlameSize,
+          GROWTH.baseFlameSize + Math.sqrt(this.energy) * GROWTH.sizeEnergyFactor
+        );
+        this.tryLevelUp();
+      }
+    });
+
+    for(let i = 0; i < 180; i++) this.matterSystem.spawnFuel();
 
     this.input.on('pointermove', (p: Phaser.Input.Pointer)=>this.target.set(p.x, p.y));
     this.input.on('pointerdown', (p: Phaser.Input.Pointer)=>this.target.set(p.x, p.y));
@@ -78,6 +84,10 @@ class FlameScene extends Phaser.Scene {
     this.add.text(this.scale.width - 24, 22, 'SPARK', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
     }).setOrigin(1, 0).setDepth(10).setAlpha(.65).setName('stage');
+
+    this.add.text(this.scale.width - 24, 43, `LV ${toDisplayNumber(this.level)}`, {
+      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
+    }).setOrigin(1, 0).setDepth(10).setAlpha(.5).setName('level');
 
     this.scale.on('resize', ()=>this.layout());
   }
@@ -129,6 +139,16 @@ class FlameScene extends Phaser.Scene {
     }
   }
 
+  tryLevelUp(){
+    while(this.level < PROGRESSION.totalLevels){
+      const nextLevel = this.level + 1;
+      const hasXp = this.xp >= PROGRESSION.xpForLevel(nextLevel);
+      const hasSize = this.flameSize >= PROGRESSION.minFlameSizeForLevel(nextLevel);
+      if(!hasXp || !hasSize) break;
+      this.level = nextLevel;
+    }
+  }
+
   createParticles(){
     const g = this.make.graphics({x:0, y:0}, false);
     g.fillStyle(0xffffff, 1);
@@ -145,126 +165,6 @@ class FlameScene extends Phaser.Scene {
       emitting:false,
       blendMode:Phaser.BlendModes.ADD
     });
-  }
-
-  spawnFuel(){
-    const margin = 45;
-    const x = Phaser.Math.Between(margin, Math.max(margin, this.scale.width - margin));
-    const y = Phaser.Math.Between(80, Math.max(80, this.scale.height - margin));
-    if(Phaser.Math.Distance.Between(x, y, this.flame.x, this.flame.y) < 120) return;
-
-    const kind = Phaser.Math.Between(0, 2);
-    const r = kind === 0
-      ? Phaser.Math.Between(3, 6)
-      : kind === 1
-        ? Phaser.Math.Between(6, 10)
-        : Phaser.Math.Between(10, 16);
-
-    const color = kind === 0 ? 0xd7c7aa : kind === 1 ? 0x5d8c55 : 0x6b625b;
-    const visual = this.add.circle(x, y, r, color, 0.78).setDepth(1);
-    const burnVisual = this.add.circle(x, y, r * 0.65, FLAME_VISUAL.palette.core, 0)
-      .setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
-
-    this.fuels.push({
-      x,
-      y,
-      r,
-      energy:r * r * (kind + 1),
-      alive:true,
-      pulse:Math.random() * Math.PI * 2,
-      kind,
-      burnState:'idle',
-      burnRemaining:0,
-      visual,
-      burnVisual
-    });
-  }
-
-  ignitionDuration(fuel: Fuel){
-    if(fuel.kind === 0) return BURNING.ignitionTime.smallest;
-    if(fuel.kind === 1) return BURNING.ignitionTime.medium;
-    return BURNING.ignitionTime.large;
-  }
-
-  ignite(fuel: Fuel){
-    if(fuel.burnState !== 'idle') return;
-    fuel.burnState = 'burning';
-    fuel.burnRemaining = this.ignitionDuration(fuel);
-    fuel.visual.setAlpha(0.42);
-    fuel.burnVisual.setAlpha(BURNING.burnPulse.alpha);
-    fuel.burnVisual.setScale(0.75);
-    this.heat = Math.min(GROWTH.maxHeat, this.heat + 0.08);
-    this.particles.setPosition(fuel.x, fuel.y);
-    this.particles.explode(Phaser.Math.Between(BURNING.emberBurst.min, Math.min(BURNING.emberBurst.max, 8)));
-  }
-
-  finishBurn(fuel: Fuel){
-    if(!fuel.alive) return;
-
-    fuel.alive = false;
-    fuel.burnState = 'idle';
-    this.energy += fuel.energy;
-    this.burned++;
-    this.flameSize = Math.min(
-      GROWTH.maxFlameSize,
-      GROWTH.baseFlameSize + Math.sqrt(this.energy) * GROWTH.sizeEnergyFactor
-    );
-    this.heat = Math.min(GROWTH.maxHeat, this.heat + fuel.r / 22);
-
-    this.particles.setPosition(fuel.x, fuel.y);
-    this.particles.explode(Phaser.Math.Clamp(Math.floor(fuel.r * 2.2), BURNING.emberBurst.min, BURNING.emberBurst.max));
-
-    const scorch = this.add.circle(
-      fuel.x,
-      fuel.y,
-      fuel.r * BURNING.scorch.radiusMultiplier,
-      FLAME_VISUAL.palette.emberRed,
-      BURNING.scorch.alpha
-    ).setDepth(0);
-
-    this.scorches.push(scorch);
-    this.tweens.add({
-      targets:scorch,
-      alpha:0.11,
-      duration:BURNING.scorch.fadeMs,
-      ease:'Sine.Out'
-    });
-
-    fuel.visual.destroy();
-    fuel.burnVisual.destroy();
-  }
-
-  updateFuel(fuel: Fuel, t:number, dt:number){
-    if(!fuel.alive) return;
-
-    if(fuel.burnState === 'idle'){
-      fuel.visual.setScale(1 + Math.sin(t * 0.003 + fuel.pulse) * 0.06);
-
-      if(Phaser.Math.Distance.Between(this.flame.x, this.flame.y, fuel.x, fuel.y)
-        < (this.flameSize + fuel.r) * BURNING.contactRadiusMultiplier){
-        this.ignite(fuel);
-      }
-      return;
-    }
-
-    fuel.burnRemaining -= dt;
-    const pulse = 1 + Math.sin(t * BURNING.burnPulse.frequency + fuel.pulse) * BURNING.burnPulse.scale;
-    const progress = Phaser.Math.Clamp(1 - fuel.burnRemaining / this.ignitionDuration(fuel), 0, 1);
-
-    fuel.visual.setScale(1 + progress * 0.16);
-    fuel.visual.setAlpha(Math.max(0.08, 0.42 - progress * 0.28));
-    fuel.burnVisual.setScale((0.75 + progress * 0.7) * pulse);
-    fuel.burnVisual.setAlpha(BURNING.burnPulse.alpha + progress * 0.2);
-
-    this.heat = Math.min(
-      GROWTH.maxHeat,
-      this.heat + (GROWTH.heatRisePerBurnSecond * dt) / 1000
-    );
-
-    this.particles.setPosition(fuel.x, fuel.y);
-    if(Math.random() < 0.15 + progress * 0.16) this.particles.explode(1);
-
-    if(fuel.burnRemaining <= 0) this.finishBurn(fuel);
   }
 
   updateFlameVisual(t:number){
@@ -356,7 +256,7 @@ class FlameScene extends Phaser.Scene {
     this.heat = Math.max(0, this.heat - GROWTH.heatDecayPerSecond * dtS);
     this.updateFlameVisual(t);
 
-    for(const fuel of this.fuels) this.updateFuel(fuel, t, dt);
+    this.matterSystem.updateAll(t, dt);
 
     const stage = this.children.getByName('stage') as Phaser.GameObjects.Text;
     stage.setText(
@@ -367,12 +267,16 @@ class FlameScene extends Phaser.Scene {
       'INFERNO'
     );
 
+    const levelLabel = this.children.getByName('level') as Phaser.GameObjects.Text;
+    levelLabel.setText(`LV ${toDisplayNumber(this.level)}`);
+
     this.particles.setPosition(this.flame.x, this.flame.y);
     if(Math.random() < FLAME_VISUAL.particles.emberChance + this.heat * 0.12) this.particles.explode(1);
   }
 
   layout(){
     (this.children.getByName('stage') as Phaser.GameObjects.Text)?.setPosition(this.scale.width - 24, 22);
+    (this.children.getByName('level') as Phaser.GameObjects.Text)?.setPosition(this.scale.width - 24, 43);
   }
 }
 
