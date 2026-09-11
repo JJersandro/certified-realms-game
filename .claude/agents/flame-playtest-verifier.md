@@ -90,10 +90,34 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    console.log('ERRORS:', JSON.stringify(errors));
    await browser.close();
    ```
-3. **Check console errors.** A page can render its shell while gameplay logic throws silently --
+3. **Verifying a sustained-contact / hold-duration mechanic (since Phase 8) is a different
+   problem than verifying a one-touch mechanic, and naive dwelling will not work.** Phase 8
+   added a mechanic that requires ~900ms of *continuous* contact on a specific stationary point.
+   Aiming at any fixed screen pixel that isn't exactly where the flame currently renders does
+   NOT converge to a fixed world point once the camera is following the flame: each frame, that
+   screen pixel maps to `cameraPos + offset`, and as the flame chases that point, the camera
+   chases the flame, which keeps regenerating a target `offset` pixels ahead of the flame's
+   *current* position -- a receding-carrot dynamic with no stationary solution for any nonzero
+   offset. In practice this means the flame just cruises steadily in whatever direction you aim
+   and never parks itself on an external object, no matter how long you dwell on that screen
+   pixel. This cost real time to work out during Phase 8's own verification -- don't re-derive
+   it. The fix: to make the flame stop, aim at the point where the flame *itself* currently
+   renders (with default `startFollow` and a centered canvas, that's approximately the viewport
+   center) -- that target is self-referential and is the one stable fixed point, so it kills
+   velocity. Sequence: travel toward a cluster with a normal off-center aim, then switch to
+   aiming at viewport-center for a couple dozen frames to brake, screenshot to see what's now
+   adjacent to the stopped flame, and only then judge whether a sustained-hold mechanic had
+   enough time in contact to fire. Even this is probabilistic (you're stopping wherever you
+   happen to be, not exactly on the object you want) -- budget several travel-then-brake cycles,
+   and if it still doesn't land, that's a real automation limitation worth reporting as such
+   rather than a confirmed pass. A clean `tsc --noEmit` is still meaningful evidence here even
+   without a captured screenshot of the exact moment: strict-mode structural typing on the
+   `MatterHost` interface means a missing or mismatched host callback the new logic depends on
+   would fail the type check, not just misbehave silently at runtime.
+5. **Check console errors.** A page can render its shell while gameplay logic throws silently --
    `page.on('console', ...)`/`page.on('pageerror', ...)` catch what a screenshot alone won't. A
    lone "404 favicon" is harmless noise; anything else is real.
-4. **Actually look at the screenshots** (Read tool supports images) -- don't just check that the
+6. **Actually look at the screenshots** (Read tool supports images) -- don't just check that the
    file was written. Confirm the specific thing you're verifying: the flame visibly grew, a HUD
    label changed value, matter of the right tier/color is present, scorch marks persist, etc.
    Since Phase 6, the stage label (SPARK/EMBER/.../CATACLYSM) advances on the same 1/12/23/34/
@@ -101,7 +125,7 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    stay on "SPARK" for a while even as the flame visibly grows and burns fuel is expected, not a
    regression. Confirm progression via the level number and visible growth/burns instead of
    expecting the stage label to move quickly.
-5. **Stop the server before finishing:**
+7. **Stop the server before finishing:**
    ```bash
    lsof -ti:5183 -sTCP:LISTEN | xargs -r kill
    ```

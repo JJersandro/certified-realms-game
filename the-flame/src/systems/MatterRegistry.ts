@@ -3,6 +3,7 @@ import { FLAME_VISUAL } from '../data/flameVisualData';
 import { BURNING } from '../data/burningData';
 import { GROWTH } from '../data/growthData';
 import { MATTER, MatterTier } from '../data/matterData';
+import { CHOICES } from '../data/choiceData';
 
 type BurnState = 'idle' | 'burning';
 
@@ -17,6 +18,10 @@ export type Fuel = {
   pulse: number;
   tier: MatterTier;
   burnState: BurnState;
+  // ms of continuous contact while not yet ignitable -- crossing
+  // CHOICES.riskyIgnition.holdMs force-ignites at a cost (see updateFuel).
+  forceProgress: number;
+  forcedBonus: boolean;
   visual: Phaser.GameObjects.Arc;
   burnVisual: Phaser.GameObjects.Arc;
 };
@@ -38,6 +43,7 @@ export type MatterHost = {
   scorches: Phaser.GameObjects.Arc[];
   getFlame: () => FlameSnapshot;
   addHeat: (amount: number) => void;
+  applyStabilityPenalty: (amount: number) => void;
   onFuelBurned: (xpYield: number) => void;
 };
 
@@ -92,6 +98,8 @@ export class MatterRegistry {
       pulse: Math.random() * Math.PI * 2,
       tier,
       burnState: 'idle',
+      forceProgress: 0,
+      forcedBonus: false,
       visual,
       burnVisual
     });
@@ -113,7 +121,10 @@ export class MatterRegistry {
 
     fuel.alive = false;
     fuel.burnState = 'idle';
-    this.host.onFuelBurned(fuel.xpYield);
+    const xpYield = fuel.forcedBonus
+      ? fuel.xpYield * CHOICES.riskyIgnition.xpBonusMultiplier
+      : fuel.xpYield;
+    this.host.onFuelBurned(xpYield);
     this.host.addHeat(fuel.r / 22);
 
     this.host.particles.setPosition(fuel.x, fuel.y);
@@ -144,15 +155,43 @@ export class MatterRegistry {
 
     if(fuel.burnState === 'idle'){
       const ignitable = flame.level >= fuel.tier.minLevelToIgnite;
-      const restingAlpha = ignitable ? 0.78 : 0.4;
-
-      fuel.visual.setScale(1 + Math.sin(t * 0.003 + fuel.pulse) * 0.06);
-      fuel.visual.setAlpha(restingAlpha);
 
       const inContact = Phaser.Math.Distance.Between(flame.x, flame.y, fuel.x, fuel.y)
         < (flame.size + fuel.r) * BURNING.contactRadiusMultiplier * flame.contactRadiusMultiplier;
 
-      if(inContact && ignitable) this.ignite(fuel);
+      if(inContact && ignitable){
+        fuel.forceProgress = 0;
+        this.ignite(fuel);
+        return;
+      }
+
+      if(inContact && !ignitable){
+        fuel.forceProgress += dt;
+        const charge = Phaser.Math.Clamp(fuel.forceProgress / CHOICES.riskyIgnition.holdMs, 0, 1);
+
+        // charging visual: the fuel itself swells and its core glow ramps
+        // up, so holding contact visibly reads as "committing" without
+        // any text or prompt.
+        fuel.visual.setScale(1 + charge * 0.35);
+        fuel.visual.setAlpha(0.4 + charge * 0.4);
+        fuel.burnVisual.setAlpha(charge * 0.5);
+        fuel.burnVisual.setScale(0.5 + charge * 0.5);
+
+        if(fuel.forceProgress >= CHOICES.riskyIgnition.holdMs){
+          fuel.forcedBonus = true;
+          this.host.addHeat(CHOICES.riskyIgnition.heatPenalty);
+          this.host.applyStabilityPenalty(CHOICES.riskyIgnition.stabilityPenalty);
+          this.ignite(fuel);
+        }
+        return;
+      }
+
+      // not in contact -- reset any partial charge and rest at the
+      // normal idle look (dimmer while gated, to signal "not ready yet").
+      fuel.forceProgress = 0;
+      fuel.visual.setScale(1 + Math.sin(t * 0.003 + fuel.pulse) * 0.06);
+      fuel.visual.setAlpha(ignitable ? 0.78 : 0.4);
+      fuel.burnVisual.setAlpha(0);
       return;
     }
 

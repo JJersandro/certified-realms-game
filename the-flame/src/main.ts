@@ -67,6 +67,9 @@ class FlameScene extends Phaser.Scene {
         contactRadiusMultiplier: capabilitiesForLevel(this.level).contactRadiusMultiplier
       }),
       addHeat: (amount) => { this.heat = Math.min(GROWTH.maxHeat, this.heat + amount); },
+      applyStabilityPenalty: (amount) => {
+        this.stability = Phaser.Math.Clamp(this.stability - amount, GROWTH.minStability, GROWTH.maxStability);
+      },
       onFuelBurned: (xpYield) => {
         this.energy += xpYield;
         this.burned++;
