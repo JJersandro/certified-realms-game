@@ -259,6 +259,15 @@ Chromium's actual binary lives wherever `PLAYWRIGHT_BROWSERS_PATH` points in thi
    necessarily limited to confirming the no-sensor fallback path (enable -> auto-revert -> normal
    touch/pointer steering resumes cleanly afterward) -- report it as such rather than claiming the
    actual tilt-steering math was exercised.
+   **The "~1200ms later" wait can take far longer wall-clock time than that** under sustained
+   load (heavy postFX, several concurrent agents/dev servers) -- one run measured ~50 real
+   seconds for `TILT: OFF` to appear, traced to Phaser's `TimeStep` capping per-frame `delta` at
+   a fixed `1000/targetFps` regardless of actual wall-clock gap between frames, combined with a
+   very low real frame rate (as low as ~2fps observed) under SwiftShader. This affects any
+   `time.delayedCall`-based mechanic, not just this one -- if a timer-driven assertion seems to
+   never fire, wait substantially longer (or poll) before concluding it's broken; it's an
+   environment/load characteristic, not a regression, same shape as the existing Phase 15
+   slow-rendering note above.
 
 10. **Verifying Phase 13's audio (all synthesized via raw Web Audio, no loaded sound files).**
     Headless Chromium genuinely produces audio output (it's not a stub), but this environment has
