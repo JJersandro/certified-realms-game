@@ -322,6 +322,35 @@ class FlameScene extends Phaser.Scene {
     if(this.level !== before){
       this.emitLevelChanged();
       this.audio.playLevelUp();
+      this.playLevelUpFlourish();
+    }
+  }
+
+  // flame-visual-designer finding: a level-up previously changed only the HUD
+  // label and played one tone -- no reaction on the flame body itself, which
+  // is exactly the "single clean signal instead of layered feedback" shape
+  // that reads as flat/static. A brief scale-pop (decaying yoyo, not a held
+  // state) plus a matching glow-intensity spike gives the moment a second,
+  // visual channel alongside the existing sound, without adding any new
+  // gameplay state -- setRadius()/setSize() in updateFlameVisual() drive the
+  // base size every frame regardless, and Phaser's .scale is an independent
+  // transform on top of that, so the two don't fight each other.
+  playLevelUpFlourish(){
+    const motionScale = this.reducedMotion ? ACCESSIBILITY.reducedMotionScale : 1;
+    const pop = 1 + 0.22 * motionScale;
+    for(const target of [this.flame, this.core]){
+      this.tweens.add({
+        targets: target,
+        scale: pop,
+        duration: 90,
+        yoyo: true,
+        ease: 'Quad.Out'
+      });
+    }
+    if(this.flameGlow){
+      const baseOuter = this.flameGlow.outerStrength;
+      this.flameGlow.outerStrength = baseOuter + 2.5 * motionScale;
+      this.time.delayedCall(180, () => { if(this.flameGlow) this.flameGlow.outerStrength = baseOuter; });
     }
   }
 

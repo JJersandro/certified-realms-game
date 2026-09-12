@@ -77,6 +77,26 @@ No respawn or reset loop exists anywhere in the game. Burned matter remains dest
 world, and a full world clear regenerates fresh (tougher) matter rather than resetting anything
 about the flame itself.
 
+## Development process
+
+Beyond the roadmap, the game's ongoing quality is driven by a small team of specialized
+Claude Code subagents (`.claude/agents/flame-*.md`), each reading from and appending to
+`BACKLOG.md` so findings accumulate across runs instead of starting from zero every time:
+
+- **`flame-phase-implementer`** builds out a roadmap phase.
+- **`flame-playtest-verifier`** drives the game in a real headless browser after any gameplay
+  change, before it's considered done.
+- **`flame-mobile-perf-auditor`** checks frame budget, memory growth, and touch input for
+  phone viability, periodically and before any phone-facing deployment.
+- **`flame-balance-tuner`** measures and tunes the numeric economy -- XP curve, skill tree
+  costs, risk thresholds -- against real measured playtime, not guesswork.
+- **`flame-visual-designer`** judges and improves whether the game actually looks and feels
+  alive, grounded in the visual reference model (`src/data/flameVisualData.ts`) and
+  game-feel/"juice" principles, not just whether it renders without errors.
+
+This is process tooling, not a roadmap phase -- it doesn't change the destination in
+"Master roadmap" above, it's how the team keeps what's already shipped from quietly rotting.
+
 ## Run locally
 
 ```bash
