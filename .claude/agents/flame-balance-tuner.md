@@ -56,11 +56,50 @@ a stale snapshot (same discipline `flame-mobile-perf-auditor.md` and
   realistically reaches.
 - **Skill tree** (`skillTreeData.ts`): 7 permanent nodes, costs 3/3/5/6/7/8/12 (36 points
   total to max everything), each granting one bonus already wired into
-  `MatterRegistry`/`FlameScene`/`SkillTreeManager`. Points come only from a full world clear
-  (`ENDGAME` in `endgameData.ts`, scaled by `worldStrength`) -- so the tree's pacing question
-  isn't "is a node worth its cost" in isolation, it's "how many world-clears does a session
-  realistically get, and does that produce a meaningful number of purchase decisions, or is it
-  years between points."
+  `MatterRegistry`/`FlameScene`/`SkillTreeManager`. Points have two sources now, deliberately
+  mirroring Idle Slayer's souls-per-kill-plus-ascension model (2026-09-12, resolving
+  BACKLOG.md's [balance] pacing item): a small flat **trickle**
+  (`SKILL_TREE_TRICKLE.pointsPerBurn = 1`, `skillTreeData.ts`) awarded on *every* fuel burn via
+  `SkillTreeManager.awardBurnTrickle()` (called from `onFuelBurned` in `main.ts`, parallel to
+  how XP itself accrues per burn), and the original **full-clear bonus**
+  (`ENDGAME.pointsBase * worldStrength * (1 + pointsYieldBonus)`, awarded via
+  `SkillTreeManager.award()` from `checkWorldConsumed()`), which stays the rarer, bigger
+  escalation-tier payout it always was -- the trickle supplements it, it doesn't replace it.
+  Critically, `SkillTreeManager.unlocked` (which gates both `canAfford()` and the HUD button's
+  visibility) now flips true on *either* source's first positive award, not only a world clear
+  -- gating the ability to spend trickle points behind the same rare event the trickle exists
+  to route around would have silently defeated the point of adding it. Measured via real
+  (non-forced) play, port 5231, 2026-09-12: first burn (~37s in one real trial) already earns 1
+  point and unlocks the tree; the first affordable purchase (cheapest node, cost 3) landed at
+  ~75-89s across two real trials -- comfortably inside the ~2-3 minute session window that
+  previously produced 0 points under the full-clear-only model. The tree's pacing question is
+  now "does the trickle produce felt, spaced-out purchase decisions across a session without
+  trivializing the whole tree in one sitting" -- 1 point/burn was sized off a measured ~5-burn/
+  163s baseline (Trial B) to land close to, not far past, the cheapest node's cost in that
+  window; re-check this constant if either the XP curve or fuel density changes enough to
+  shift burns-per-minute meaningfully.
+  Fixing this pacing issue also surfaced two pre-existing `UIScene.ts` bugs that were silently
+  blocking every real click-driven skill purchase (not just this trickle's), both fixed
+  alongside it: (1) `makeTappable()`'s repeated `setInteractive({hitArea, ...})` calls (done
+  every time a button/line's text -- and therefore width -- changes) were a no-op on hit-area
+  geometry, because Phaser's `InputPlugin.enable()` only calls `setHitArea()` the *first* time
+  an object becomes interactive; every skill-tree line is created with empty text, so its real
+  hit box was permanently frozen at a near-zero-width box from creation, nowhere near its later
+  rendered text -- fixed by writing `obj.input.hitArea` directly on repeat calls instead of
+  relying on `setInteractive()` to rebuild it. (2) Once hit areas were correct, the skill-tree
+  list's 7 lines (18px apart) and the settings list's 2 lines (20px apart) turned out too
+  tightly packed for the existing `TAP_PAD_Y = 16` -- adjacent padded hit boxes overlapped by
+  ~26px, so a tap square in the middle of one line's own text could resolve to a *different*
+  line's purchase (confirmed: a click aimed at "Ember Reach" bought "Kindling Heart" instead)
+  -- fixed with a separate, smaller `LIST_TAP_PAD_Y = 2` (sized to the tightest actual gap
+  between rows) for every object in either stacked list, leaving the standalone TILT/SOUND
+  buttons at the original, more generous padding. Both fixes verified via
+  `scene.input.hitTestPointer()` and real `page.mouse.click()` purchases of all 7 nodes
+  individually (each now buys the exact node clicked) plus both settings toggles. The
+  underlying "list rows are tighter than the ~44px mobile-tap guidance this file's own comment
+  already flagged" shortfall is not fixed by the smaller padding (it can't be, that's what
+  caused the overlap) -- widening the lists' own row pitch is a layout change flagged to
+  BACKLOG.md's `[visual]`/`[mobile-perf]` sections for a dedicated pass, not done here.
 - **Risk** (`riskData.ts`): `overheatThreshold: 0.85` (fraction of max heat) and
   `fragileThreshold: 0.35` (stability) both trigger a `shrinkPerSecond: 0.8` size drain while
   held. Check whether normal, non-adversarial play (the kind `/verify`'s naive-sweep test does)

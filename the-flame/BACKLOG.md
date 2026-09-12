@@ -34,8 +34,10 @@ was found and fixed stays visible.
       `tryLevelUp()`/`tryLevelDown()` in `main.ts` updated to describe the real
       XP-forward/size-backward shape instead of the old (never-true) "coupled forward
       progress" claim.
-- [ ] Real wall-clock time-to-level-2/tier-up measured via natural (real pointer-driven,
-      non-forced) play, port 5221, 2026-09-12 -- **left open, tuning likely warranted**.
+- [x] Real wall-clock time-to-level-2/tier-up measured via natural (real pointer-driven,
+      non-forced) play, port 5221, 2026-09-12 -- **skill-point pacing half resolved (real
+      pass, 2026-09-12, flame-balance-tuner); the level/tier-up timing half stays open, see
+      below.**
       Two trials, both real contact/burn, no state mutation of energy/level/flameSize:
       - Trial A (steered toward the literal nearest alive fuel, ignoring tier gating --
         a plausible "chase whatever's closest" novice path): first contact took 146.9s of
@@ -66,6 +68,68 @@ was found and fixed stays visible.
         multi-session (not multi-minute) cadence as the intended feel for the skill tree.
         Flagging rather than picking a number here since it's the same shape of open call as
         the `hasSize` item above.
+      - **Resolved for the skill-point half of this item (2026-09-12, flame-balance-tuner)**,
+        per explicit user direction ("just like Idle Slayer"): picked the third option this
+        item flagged -- added a small non-full-clear skill-point trickle -- rather than
+        shrinking `WORLD` or accepting multi-session cadence. Idle Slayer's actual model
+        (souls drip from every kill, not from a rare ascension-only event; ascension is a
+        bigger, less-frequent multiplier layered on top, not the only income source) maps
+        onto The Flame as: `SKILL_TREE_TRICKLE.pointsPerBurn = 1` (new constant,
+        `skillTreeData.ts`), awarded via a new `SkillTreeManager.awardBurnTrickle()` called
+        from `onFuelBurned` in `main.ts` (parallel to how XP itself accrues per burn), on top
+        of -- not replacing -- `checkWorldConsumed()`'s existing full-clear bonus, which stays
+        the bigger, rarer escalation-tier reward. Sized off this item's own Trial B baseline
+        (5 burns / ~163s): 1 point/burn puts a player at 5 points by that point, enough for
+        exactly one purchase (cheapest node costs 3) without affording the whole tree (36
+        total). Also had to flip `SkillTreeManager.unlocked` to trigger on *either* source's
+        first positive award, not only a world clear (previously the only path) -- gating the
+        ability to *spend* trickle points behind the same rare event the trickle exists to
+        route around would have silently defeated the point of adding it; this was a necessary
+        consequence of the requested change, not a separate unilateral design call. Verified
+        via real (non-forced) play, port 5231: two independent real trials both showed the
+        first burn (~37-38s in) immediately earning 1 point and unlocking the tree, and the
+        first affordable-purchase threshold (3 points) landing at ~75-89s -- comfortably inside
+        the ~2-3 minute window that previously produced 0 points. `tsc --noEmit`/`vite build`
+        clean, zero console errors across both trials.
+        **Surfaced two pre-existing, unrelated bugs while verifying the real click-purchase
+        flow this trickle is meant to enable** (both in `UIScene.ts`, both fixed in the same
+        pass since they blocked verifying the very feature being added, not a new design
+        choice): (1) `makeTappable()`'s hit area was rebuilt on every text change in theory,
+        but Phaser's `InputPlugin.enable()` only calls `setHitArea()` the *first* time an
+        object becomes interactive -- every later `setInteractive()` call on an already-
+        interactive object silently no-ops the geometry update. Every skill-tree line is
+        created with empty text, so its real hit box was frozen forever at a near-zero-width
+        box from creation, nowhere near where its actual text later rendered -- confirmed via
+        `scene.input.hitTestPointer()` returning zero hits at a line's own `getBounds()`
+        center. Fixed by writing `obj.input.hitArea` directly when `obj.input` already exists.
+        (2) Once hit areas were correct, the skill-tree list's 7 lines (18px apart) and
+        settings list's 2 lines (20px apart) were too tightly packed for the existing
+        `TAP_PAD_Y = 16` -- adjacent padded hit boxes overlapped by ~26px, so a real click
+        aimed at "Ember Reach" bought "Kindling Heart" instead. Fixed with a separate, smaller
+        `LIST_TAP_PAD_Y = 2` (sized to the tightest real gap between rows) applied to every
+        object in either stacked list, leaving the standalone TILT/SOUND buttons at the
+        original padding. Both fixes verified: real clicks on all 7 skill-tree lines each now
+        purchase the exact node clicked (individually confirmed, not just the first one), and
+        both settings toggles (colorblind/reduced motion) still flip correctly. The underlying
+        "list rows are tighter than the ~44px mobile-tap-target guidance this same file already
+        flagged" shortfall is not fixed by shrinking padding further (that's what caused the
+        overlap) -- widening the lists' own row pitch is a layout change, flagged below under
+        `[visual]`/`[mobile-perf]` for a dedicated pass rather than done here.
+      - **Still open**: the level/tier-up wall-clock timing itself (Trial A/B's finding that
+        travel time, not the XP curve, dominates early pacing) is untouched by this fix and
+        remains a live open decision -- shrinking `WORLD`'s size/fuel-spread is still on the
+        table for whoever picks this up next.
+- [ ] `UIScene.ts`'s skill-tree list (7 lines, 18px row pitch) and settings list (2 lines, 20px
+      pitch) now have *correct, non-overlapping* tap targets (see the resolved item above) but
+      each target is still only as tall as the 12px text plus a 2px pad on each side (~16px) --
+      well under the ~44px minimum mobile-tap guidance this file's own `TAP_PAD_Y` comment
+      already calls out as a shortfall for standalone buttons, and now more so for these two
+      lists specifically, since padding couldn't be the fix here (found by flame-balance-tuner,
+      2026-09-12). The real fix is widening each list's own row pitch (a layout change, not a
+      numeric constant) so a bigger pad can be restored without reintroducing the overlap this
+      run just fixed -- left for a `flame-visual-designer`/`flame-mobile-perf-auditor` pass
+      rather than picked unilaterally here, since it changes how much vertical space the open
+      skill-tree/settings lists occupy on screen.
 
 ## [visual]
 

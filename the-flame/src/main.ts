@@ -139,6 +139,13 @@ class FlameScene extends Phaser.Scene {
           GROWTH.baseFlameSize + Math.sqrt(this.energy) * GROWTH.sizeEnergyFactor
         );
         this.tryLevelUp();
+        // Idle-Slayer-style trickle (BACKLOG.md [balance] pacing item): a
+        // small flat skill-point drip on every burn, independent of and in
+        // addition to checkWorldConsumed()'s much rarer full-clear bonus
+        // below -- see SKILL_TREE_TRICKLE's comment in skillTreeData.ts.
+        const justUnlockedByTrickle = this.skillTree.awardBurnTrickle();
+        if(justUnlockedByTrickle) this.game.events.emit('ui:skillTreeUnlocked');
+        this.emitSkillTreeChanged();
         this.checkWorldConsumed();
       },
       onIgnite: () => this.audio.playIgnite(),
@@ -468,15 +475,15 @@ class FlameScene extends Phaser.Scene {
     if(this.matterSystem.fuels.length === 0) return;
     if(!this.matterSystem.fuels.every(f => !f.alive)) return;
 
-    const wasUnlocked = this.skillTree.unlocked;
-    this.skillTree.unlocked = true;
-
     // Points scale with the strength of the world just cleared, computed
     // BEFORE escalating worldStrength for the next world.
     const pointsAwarded = Math.round(
       ENDGAME.pointsBase * this.worldStrength * (1 + this.skillTree.pointsYieldBonus())
     );
-    this.skillTree.award(pointsAwarded);
+    // award() itself detects the unlocked false->true transition now (see
+    // SkillTreeManager) -- the burn trickle can trigger it first in practice,
+    // so this can no longer assume it's the only unlock path.
+    const justUnlocked = this.skillTree.award(pointsAwarded);
 
     if(this.worldsCleared === 0){
       this.worldStrength *= ENDGAME.firstEscalationMultiplier;
@@ -491,7 +498,7 @@ class FlameScene extends Phaser.Scene {
     this.world.regenerate(this.worldStrength);
 
     this.audio.playWorldClear();
-    if(!wasUnlocked) this.game.events.emit('ui:skillTreeUnlocked');
+    if(justUnlocked) this.game.events.emit('ui:skillTreeUnlocked');
     this.emitSkillTreeChanged();
   }
 

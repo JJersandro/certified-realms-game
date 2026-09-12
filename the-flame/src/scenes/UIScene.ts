@@ -22,6 +22,26 @@ type SkillNodeView = {
 const TAP_PAD_X = 16;
 const TAP_PAD_Y = 16;
 
+// flame-balance-tuner finding (2026-09-12): TAP_PAD_Y=16 gives every
+// standalone button (TILT/SOUND) a generous, non-overlapping ~44px target
+// since nothing else sits within that radius of them. It does NOT work for
+// any *vertically stacked list* (the skill tree button + its 7 lines, 18px
+// apart; the settings button + its 2 lines, 20px apart) -- a 16px pad on
+// both sides of two neighbors only 18-20px apart makes their padded hit
+// boxes overlap by ~26px, so a real tap square in the middle of one line's
+// own visible text can still resolve to a *different* line's (or the
+// button's) pointerdown handler. Confirmed via `scene.input.hitTestPointer()`
+// and a real click that purchased 'kindling-heart' while aimed at 'Ember
+// Reach' text. This smaller pad is sized to the tightest gap in either list
+// (18px pitch - ~12px text height = 6px gap => pad*2 <= 6) with a 2px safety
+// margin against font-metric rounding, so adjacent padded boxes in a list
+// never touch. This does make those specific targets smaller than the
+// ~44px mobile-tap guidance the comment above already flags as an existing
+// shortfall -- widening the list's own row pitch instead (a layout change,
+// not a numeric-constant one) is the real fix for that and is flagged to
+// BACKLOG.md's [visual]/[mobile-perf] sections rather than done here.
+const LIST_TAP_PAD_Y = 2;
+
 // Phase 12: all manually-positioned HUD chrome lives here now, running in
 // parallel with FlameScene ('flame'). FlameScene pushes state changes via
 // this.game.events ('ui:*' events); this scene pushes user intent back the
@@ -58,20 +78,45 @@ export class UIScene extends Phaser.Scene {
   // the hitArea is in the object's own local space (0,0 at its top-left
   // before origin is applied), so padding it out symmetrically enlarges
   // the tappable region without moving the visible text at all.
-  private makeTappable(obj: Phaser.GameObjects.Text){
+  //
+  // flame-balance-tuner finding (2026-09-12): every caller of this method
+  // re-invokes it whenever an object's text (and therefore obj.width)
+  // changes, on the assumption that setInteractive() picks up the new,
+  // wider-or-narrower hitArea. It doesn't: Phaser's InputPlugin.enable()
+  // (what GameObject.setInteractive() delegates to) only calls setHitArea()
+  // the *first* time a Game Object is made interactive -- every subsequent
+  // call with an already-interactive object just flips `.input.enabled`
+  // back to true and silently keeps whatever hitArea was built at that
+  // first call. Every skillTreeLine is created with empty text (''), so
+  // its real, frozen-forever hit area was a ~0-width box anchored at the
+  // line's origin corner -- nowhere near where the line's actual rendered
+  // text (set moments later, and every time afterward) visually sits. That
+  // made a real click on a skill-tree line's own visible text area silently
+  // miss every time (confirmed via `scene.input.hitTestPointer()` returning
+  // zero hits at the line's own getBounds() center) -- skill point purchases
+  // were unclickable in practice before this fix, not just when this trickle
+  // change made points reachable in a short session. The fix: once an
+  // object is already interactive, update its existing hitArea in place
+  // instead of relying on setInteractive() to rebuild it.
+  private makeTappable(obj: Phaser.GameObjects.Text, padY: number = TAP_PAD_Y){
     const hitArea = new Phaser.Geom.Rectangle(
-      -TAP_PAD_X, -TAP_PAD_Y, obj.width + TAP_PAD_X * 2, obj.height + TAP_PAD_Y * 2
+      -TAP_PAD_X, -padY, obj.width + TAP_PAD_X * 2, obj.height + padY * 2
     );
-    obj.setInteractive({ hitArea, hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
+    if(obj.input){
+      obj.input.hitArea = hitArea;
+    } else {
+      obj.setInteractive({ hitArea, hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
+    }
   }
 
   // Same padding, but in screen space (matching getBounds()) for the
   // click-guard in isPointOverUI -- must stay in sync with makeTappable
   // above, or a tap landing in the padding would both hit the button and
-  // fall through to steer the flame underneath it.
-  private paddedBounds(obj: Phaser.GameObjects.Text): Phaser.Geom.Rectangle {
+  // fall through to steer the flame underneath it. padY must match
+  // whatever the same object's makeTappable() call used.
+  private paddedBounds(obj: Phaser.GameObjects.Text, padY: number = TAP_PAD_Y): Phaser.Geom.Rectangle {
     const b = obj.getBounds();
-    return new Phaser.Geom.Rectangle(b.x - TAP_PAD_X, b.y - TAP_PAD_Y, b.width + TAP_PAD_X * 2, b.height + TAP_PAD_Y * 2);
+    return new Phaser.Geom.Rectangle(b.x - TAP_PAD_X, b.y - padY, b.width + TAP_PAD_X * 2, b.height + padY * 2);
   }
 
   create(){
@@ -108,7 +153,7 @@ export class UIScene extends Phaser.Scene {
     this.skillTreeButton = this.add.text(this.scale.width - 24, this.scale.height - 32, 'SKILL TREE: 0 PTS', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(.6).setVisible(false);
-    this.makeTappable(this.skillTreeButton);
+    this.makeTappable(this.skillTreeButton, LIST_TAP_PAD_Y);
     this.skillTreeButton.on('pointerdown', () => {
       this.listOpen = !this.listOpen;
       this.renderSkillTreeLines();
@@ -118,7 +163,7 @@ export class UIScene extends Phaser.Scene {
       const line = this.add.text(this.scale.width - 24, this.scale.height - 32, '', {
         fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
       }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setVisible(false);
-      this.makeTappable(line);
+      this.makeTappable(line, LIST_TAP_PAD_Y);
       // nodeId is bound after the first 'ui:skillTreeChanged' event arrives
       // (see renderSkillTreeLines) -- the listener reads it fresh each time
       // via this.latestNodes rather than being rebuilt per-node.
@@ -133,7 +178,7 @@ export class UIScene extends Phaser.Scene {
     this.settingsButton = this.add.text(this.scale.width / 2, 22, 'SETTINGS', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6);
-    this.makeTappable(this.settingsButton);
+    this.makeTappable(this.settingsButton, LIST_TAP_PAD_Y);
     this.settingsButton.on('pointerdown', () => {
       this.settingsOpen = !this.settingsOpen;
       this.renderSettingsLines();
@@ -142,13 +187,13 @@ export class UIScene extends Phaser.Scene {
     this.colorblindLine = this.add.text(this.scale.width / 2, 22, 'Colorblind: OFF', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6).setVisible(false);
-    this.makeTappable(this.colorblindLine);
+    this.makeTappable(this.colorblindLine, LIST_TAP_PAD_Y);
     this.colorblindLine.on('pointerdown', () => this.game.events.emit('ui:requestToggleColorblind'));
 
     this.reducedMotionLine = this.add.text(this.scale.width / 2, 22, 'Reduced Motion: OFF', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6).setVisible(false);
-    this.makeTappable(this.reducedMotionLine);
+    this.makeTappable(this.reducedMotionLine, LIST_TAP_PAD_Y);
     this.reducedMotionLine.on('pointerdown', () => this.game.events.emit('ui:requestToggleReducedMotion'));
 
     this.layout();
@@ -207,15 +252,15 @@ export class UIScene extends Phaser.Scene {
     this.colorblindLine.setText(`Colorblind: ${this.colorblindOn ? 'ON' : 'OFF'}`).setVisible(this.settingsOpen);
     this.reducedMotionLine.setText(`Reduced Motion: ${this.reducedMotionOn ? 'ON' : 'OFF'}`).setVisible(this.settingsOpen);
     // ON/OFF differ in width by a few px -- keep the padded hit area exact.
-    this.makeTappable(this.colorblindLine);
-    this.makeTappable(this.reducedMotionLine);
+    this.makeTappable(this.colorblindLine, LIST_TAP_PAD_Y);
+    this.makeTappable(this.reducedMotionLine, LIST_TAP_PAD_Y);
   }
 
   onSkillTreeChanged = ({ points, nodes }: { points: number; nodes: SkillNodeView[] }) => {
     this.latestPoints = points;
     this.latestNodes = nodes;
     this.skillTreeButton.setText(`SKILL TREE: ${toDisplayNumber(points)} PTS`);
-    this.makeTappable(this.skillTreeButton);
+    this.makeTappable(this.skillTreeButton, LIST_TAP_PAD_Y);
     this.renderSkillTreeLines();
   };
 
@@ -228,7 +273,10 @@ export class UIScene extends Phaser.Scene {
       // off obj.width at makeTappable-call time) needs recomputing every
       // time the text actually changes -- it started at width 0 (line was
       // created with empty text) and would otherwise stay wrong forever.
-      this.makeTappable(line);
+      // LIST_TAP_PAD_Y (not the default TAP_PAD_Y), see that constant's
+      // comment -- these lines are only 18px apart, too tight for the
+      // standalone-button padding without adjacent hit areas overlapping.
+      this.makeTappable(line, LIST_TAP_PAD_Y);
       line.setVisible(this.listOpen);
       line.setAlpha(node.owned ? 0.35 : node.afford ? 0.9 : 0.45);
       line.setColor(node.owned ? '#7fffb0' : node.afford ? '#ffb347' : '#888888');
@@ -240,13 +288,13 @@ export class UIScene extends Phaser.Scene {
   isPointOverUI(x: number, y: number): boolean {
     if(this.tiltButton.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.tiltButton), x, y)) return true;
     if(this.soundButton.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.soundButton), x, y)) return true;
-    if(this.skillTreeButton.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.skillTreeButton), x, y)) return true;
+    if(this.skillTreeButton.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.skillTreeButton, LIST_TAP_PAD_Y), x, y)) return true;
     for(const line of this.skillTreeLines){
-      if(line.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(line), x, y)) return true;
+      if(line.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(line, LIST_TAP_PAD_Y), x, y)) return true;
     }
-    if(Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.settingsButton), x, y)) return true;
-    if(this.colorblindLine.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.colorblindLine), x, y)) return true;
-    if(this.reducedMotionLine.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.reducedMotionLine), x, y)) return true;
+    if(Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.settingsButton, LIST_TAP_PAD_Y), x, y)) return true;
+    if(this.colorblindLine.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.colorblindLine, LIST_TAP_PAD_Y), x, y)) return true;
+    if(this.reducedMotionLine.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.reducedMotionLine, LIST_TAP_PAD_Y), x, y)) return true;
     return false;
   }
 

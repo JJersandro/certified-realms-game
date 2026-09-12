@@ -1,4 +1,4 @@
-import { SKILL_TREE, SkillEffect, SkillNode } from '../data/skillTreeData';
+import { SKILL_TREE, SKILL_TREE_TRICKLE, SkillEffect, SkillNode } from '../data/skillTreeData';
 
 // Narrow, self-contained state owner (WorldManager-shaped, not a Host
 // interface) -- it never needs to call back into FlameScene, only to be
@@ -9,8 +9,28 @@ export class SkillTreeManager {
   points = 0;
   purchased = new Set<string>();
 
-  award(amount: number){
+  // Returns true exactly when this call is the one that transitions
+  // unlocked false -> true, so callers (FlameScene) know whether to fire the
+  // one-shot 'ui:skillTreeUnlocked' event. Unlocking on *any* positive award
+  // -- not just a world-clear one -- is deliberate: since the burn trickle
+  // (awardBurnTrickle below) exists specifically to route around the
+  // multi-hour wait for a full world clear, gating the ability to *spend*
+  // those trickle points behind that same rare event would silently defeat
+  // the point of adding them. See skillTreeData.ts's SKILL_TREE_TRICKLE
+  // comment and BACKLOG.md's [balance] pacing item for the full reasoning.
+  award(amount: number): boolean {
+    const wasUnlocked = this.unlocked;
     this.points += amount;
+    if(amount > 0) this.unlocked = true;
+    return !wasUnlocked && this.unlocked;
+  }
+
+  // The Idle-Slayer-style continuous drip: call once per fuel burn (parallel
+  // to how a world clear calls award() with its own computed amount) --
+  // small and flat rather than scaled to that burn's xpYield, see
+  // SKILL_TREE_TRICKLE's comment for why.
+  awardBurnTrickle(): boolean {
+    return this.award(SKILL_TREE_TRICKLE.pointsPerBurn);
   }
 
   canAfford(node: SkillNode): boolean {
