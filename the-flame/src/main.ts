@@ -237,11 +237,24 @@ class FlameScene extends Phaser.Scene {
       // uniform sequence
       const lobeScale = 1 + (Math.random() * 2 - 1) * FLAME_VISUAL.motion.lobeVariance;
 
+      // flame-visual-designer finding (2026-09-12): the ribbon ellipse's
+      // half-height needs to clear the flame body's own radius (flameSize)
+      // for a ribbon lobe to actually poke past the flame's opaque circular
+      // silhouette (depth 6, drawn on top of these ribbons at depth 5) --
+      // otherwise it's fully occluded and invisible regardless of how much
+      // lobeVariance/tipJitter perturb its shape. The old 1.7-2.05 factor's
+      // half-height (0.85-1.03x flameSize before lobeScale) sat right at or
+      // under that threshold, so at low lobeScale/low heat/rest state most
+      // ribbons rendered fully hidden -- see BACKLOG.md's [visual] item and
+      // the before/after screenshots that motivated this change. 3.4-3.8
+      // guarantees a clearing half-height (>=1.19x flameSize) even at
+      // lobeVariance's minimum lobeScale (0.7), so a jagged ribbon tip is
+      // reliably visible outside the flame's edge at every tier/size.
       const visual = this.add.ellipse(
         this.target.x,
         this.target.y,
         this.flameSize * (0.44 + i * 0.035) * lobeScale,
-        this.flameSize * (1.7 + (i % 2) * 0.35) * lobeScale,
+        this.flameSize * (3.4 + (i % 2) * 0.4) * lobeScale,
         colors[i],
         FLAME_VISUAL.presentation.preferLayeredTransparency ? 0.24 + i * 0.025 : 0.8
       ).setDepth(5).setBlendMode(Phaser.BlendModes.ADD);
@@ -310,19 +323,42 @@ class FlameScene extends Phaser.Scene {
     // "no sensor" and "sensor went stale mid-session" with one check.
   }
 
+  // flame-balance-tuner finding (2026-09-12, see BACKLOG.md [balance]): this used to also
+  // require `flameSize >= PROGRESSION.minFlameSizeForLevel(nextLevel)` alongside the XP
+  // check below, on the theory that physical growth and XP grinding were two independent
+  // gates. They aren't -- flameSize is a deterministic function of the same `energy` this
+  // XP check reads (see onFuelBurned above), and the risk-shrink block in update() keeps
+  // energy and flameSize in lockstep even when shrinking (it clamps energy down to match
+  // whatever flameSize the shrink produced). A binary search across levels 2/5/11/22/39/
+  // 56/77 confirmed the size threshold is already satisfied at every one of those levels
+  // by the time the XP threshold clears, so the size check never independently blocked a
+  // level-up -- it was dead weight dressed up as a second progression axis. Removed here;
+  // XP is the sole forward gate. `PROGRESSION.minFlameSizeForLevel` is not unused, though
+  // -- it still does real, independent work in tryLevelDown() below, where it governs how
+  // much shrinkage (from the risk system's overheat/fragile drain) it takes to demote a
+  // level, and it triggers demotion *before* an XP-equivalent check would (its per-level
+  // minimum is gentler than the XP curve's). If a "size matters" second axis is wanted for
+  // *leveling up* specifically, that requires deliberately steepening this curve (a feel
+  // decision, flagged to the user rather than picked here) -- see BACKLOG.md.
   tryLevelUp(){
     const before = this.level;
     while(this.level < PROGRESSION.totalLevels){
       const nextLevel = this.level + 1;
       const hasXp = this.energy >= PROGRESSION.xpForLevel(nextLevel);
-      const hasSize = this.flameSize >= PROGRESSION.minFlameSizeForLevel(nextLevel);
-      if(!hasXp || !hasSize) break;
+      if(!hasXp) break;
       this.level = nextLevel;
     }
     if(this.level !== before){
       this.emitLevelChanged();
       this.audio.playLevelUp();
       this.playLevelUpFlourish();
+      // A tier-up (only 7 per 77-level game) is strictly bigger news than an
+      // ordinary level-up that happens to cross it -- layer a second,
+      // distinct reaction on top rather than letting the two look identical
+      // (flame-visual-designer finding, 2026-09-12).
+      if(PROGRESSION.tierForLevel(this.level) > PROGRESSION.tierForLevel(before)){
+        this.playTierUpFlourish();
+      }
     }
   }
 
@@ -354,9 +390,64 @@ class FlameScene extends Phaser.Scene {
     }
   }
 
-  // mirrors tryLevelUp() going the other way -- shrinking (see update())
-  // below a level's own size requirement demotes it, re-gating whatever
-  // matter/capabilities that level had unlocked.
+  // flame-visual-designer finding (2026-09-12): a tier-up is only 7 per
+  // 77-level game -- meaningfully rarer and bigger news than an ordinary
+  // level-up crossing it, but before this it triggered the exact same
+  // playLevelUpFlourish() and looked identical. This layers a second,
+  // distinct reaction on top (called in addition to, not instead of, the
+  // level-up flourish above) rather than just scaling up the same tween:
+  // a longer/stronger scale-pop, a longer glow spike, and an expanding
+  // "shockwave" ring rendered in the *new* tier's resting color (form.base)
+  // -- a preview flash of the color family the flame is now evolving into,
+  // distinct in shape (an expanding ring, not a body scale-pop) from
+  // anything level-up already does. Respects reducedMotion the same way
+  // every other amplitude-driven effect in this file does (damping, not
+  // zeroing, per ACCESSIBILITY's own reasoning).
+  playTierUpFlourish(){
+    const motionScale = this.reducedMotion ? ACCESSIBILITY.reducedMotionScale : 1;
+    const pop = 1 + 0.4 * motionScale;
+    for(const target of [this.flame, this.core]){
+      this.tweens.add({
+        targets: target,
+        scale: pop,
+        duration: 220,
+        yoyo: true,
+        ease: 'Quad.Out'
+      });
+    }
+    if(this.flameGlow){
+      const baseOuter = this.flameGlow.outerStrength;
+      this.flameGlow.outerStrength = baseOuter + 5 * motionScale;
+      this.time.delayedCall(420, () => { if(this.flameGlow) this.flameGlow.outerStrength = baseOuter; });
+    }
+
+    const form = formForLevel(this.level, this.palette());
+    const ring = this.add.circle(this.flame.x, this.flame.y, this.flameSize * 0.9, form.base, 0.5)
+      .setDepth(8)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring,
+      radius: this.flameSize * (1.6 + 1.4 * motionScale),
+      alpha: 0,
+      duration: 520,
+      ease: 'Cubic.Out',
+      onUpdate: () => ring.setPosition(this.flame.x, this.flame.y),
+      onComplete: () => ring.destroy()
+    });
+
+    // A second, larger particle burst on top of the ambient ember trickle --
+    // same reasoning as ignite's existing particle burst, just bigger, since
+    // a tier-up is a bigger event than a single ignition.
+    this.particles.setPosition(this.flame.x, this.flame.y);
+    this.particles.explode(10);
+  }
+
+  // No longer a mirror of tryLevelUp() (which is XP-only, see above) -- this is the one
+  // remaining consumer of PROGRESSION.minFlameSizeForLevel. Shrinking (see the risk-shrink
+  // block in update()) below a level's own size requirement demotes it, re-gating whatever
+  // matter/capabilities that level had unlocked. This still does real, independent work:
+  // the size curve's per-level minimum is gentler than the XP curve's, so demotion fires
+  // sooner (at less energy/size lost) than an XP-equivalent check would.
   tryLevelDown(){
     const before = this.level;
     while(this.level > 1 && this.flameSize < PROGRESSION.minFlameSizeForLevel(this.level)){
@@ -521,7 +612,11 @@ class FlameScene extends Phaser.Scene {
 
       ribbon.visual.setSize(
         this.flameSize * (0.38 + ribbon.width * 0.05) * ribbon.lobeScale * (1 + this.heat * 0.08 + jitter),
-        this.flameSize * (1.45 + ribbon.height * 0.15) * ribbon.lobeScale * stretch * (1 - jitter * 0.6)
+        // matches createFlameBody()'s bumped 3.4-3.8 base -- see the comment
+        // there. Keeps the same lobeScale/stretch/jitter modulation, just on
+        // a taller base so tips clear the flame body's opaque circle instead
+        // of rendering fully hidden underneath it.
+        this.flameSize * (3.2 + ribbon.height * 0.3) * ribbon.lobeScale * stretch * (1 - jitter * 0.6)
       );
       ribbon.visual.rotation = currentDirection + Math.PI / 2 + s * (0.28 + this.heat * 0.1) + jitter * 0.3;
       ribbon.visual.setAlpha(Math.min(0.38, ribbon.alpha + this.flameSize / 5000 + this.heat * 0.05));

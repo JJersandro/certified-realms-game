@@ -29,21 +29,23 @@ a stale snapshot (same discipline `flame-mobile-perf-auditor.md` and
   energy, level 11 (tier cap) needs 730, level 77 (max) needs ~13,514. Industry-standard
   exponents for "gentle early, steep late" sit around 1.5-2.2; this game uses the gentle end
   of that range.
-- **Size gate runs alongside XP, but check whether it ever actually binds.**
-  `tryLevelUp()` (`main.ts`) requires `energy >= xpForLevel(nextLevel)` **and**
-  `flameSize >= minFlameSizeForLevel(nextLevel)`. `flameSize` is itself a deterministic
-  function of the same `energy` (`baseFlameSize + sqrt(energy) * sizeEnergyFactor`, capped at
-  `maxFlameSize`), so the two gates aren't independent -- they're two different curves over the
-  same one input. Working the algebra: the size gate needs roughly `1.8 * (level-1)^2` energy
-  and the XP gate needs `20 * level^1.5`. At every level from 2 through 77 the XP curve asks
-  for more energy than the size curve does (e.g. level 77: XP wants ~13,514, size wants
-  ~10,368) -- meaning **the size requirement may currently never independently gate anything**;
-  whenever a player has enough XP, they already have enough size too, and the "coupled
-  progression" the code comment describes could be XP-only in practice. Confirm this
-  empirically (instrument both `hasXp`/`hasSize` at a level-up and log which one was already
-  true a tick earlier) before touching it -- if confirmed, decide (and flag to the user, this
-  is a design call, not just a bug) whether to make the size curve steeper so it sometimes
-  binds, or accept XP as the sole gate and simplify the comment/dead condition.
+- **Size gate resolved (2026-09-12): `tryLevelUp()` is XP-only now.** It used to also require
+  `flameSize >= minFlameSizeForLevel(nextLevel)` alongside `energy >= xpForLevel(nextLevel)`,
+  on the theory that they were two independent gates. They weren't: `flameSize` is a
+  deterministic function of the same `energy` (`baseFlameSize + sqrt(energy) *
+  sizeEnergyFactor`, capped at `maxFlameSize`), and the risk-shrink block in `update()` keeps
+  the two in lockstep even while shrinking (it clamps `energy` down to match whatever
+  `flameSize` the shrink produced). A binary search across levels 2/5/11/22/39/56/77 confirmed
+  the size threshold was always already satisfied by the time the XP threshold cleared, so the
+  size check never independently blocked a level-up -- removed from `tryLevelUp()`, XP is now
+  the sole forward gate. `PROGRESSION.minFlameSizeForLevel` is not dead code, though:
+  `tryLevelDown()` still reads it to decide how much risk-driven shrinkage demotes a level, and
+  does so *before* an XP-equivalent check would (its per-level minimum is gentler than the XP
+  curve's) -- so today the two curves are XP-forward / size-backward, not "coupled forward
+  progress." If a future run wants size to matter for *leveling up* specifically, that requires
+  deliberately steepening `minFlameSizeForLevel`'s curve -- flag that to the user rather than
+  picking a number unilaterally, since steepening it also makes downward demotion trigger on
+  less shrinkage (the two directions share one curve).
 - **Fuel XP yield** (`matterData.ts`): `xpYield = r^2 * tier.xpFactor` per burn (`r` is the
   fuel's radius, rolled per-instance in its tier's `radiusMin`-`radiusMax` range), scaled by
   `flame.xpYieldMultiplier` (1.0 plus any `cinder-storm` skill bonus). Tier 1 kindling
