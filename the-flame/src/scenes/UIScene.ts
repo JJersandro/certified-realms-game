@@ -10,6 +10,18 @@ type SkillNodeView = {
   afford: boolean;
 };
 
+// Every HUD button/line here is 11px text with no padding -- an actual
+// measured tap target of roughly 12px tall, well under the ~44px minimum
+// mobile guidance calls for. Rather than growing the font (which would
+// force a whole HUD relayout), every tappable text gets an invisible
+// padded hit area this many px larger on each side, applied identically
+// to both the interactive hitArea (so it's actually easier to tap) and
+// the click-guard bounds in isPointOverUI (so a tap inside the padding
+// is excluded from steering the flame too -- both must agree on the same
+// region or a tap near a button's edge would both hit it AND steer).
+const TAP_PAD_X = 16;
+const TAP_PAD_Y = 16;
+
 // Phase 12: all manually-positioned HUD chrome lives here now, running in
 // parallel with FlameScene ('flame'). FlameScene pushes state changes via
 // this.game.events ('ui:*' events); this scene pushes user intent back the
@@ -42,6 +54,26 @@ export class UIScene extends Phaser.Scene {
 
   constructor(){ super('ui'); }
 
+  // Replaces the bare `.setInteractive({ useHandCursor: true })` calls --
+  // the hitArea is in the object's own local space (0,0 at its top-left
+  // before origin is applied), so padding it out symmetrically enlarges
+  // the tappable region without moving the visible text at all.
+  private makeTappable(obj: Phaser.GameObjects.Text){
+    const hitArea = new Phaser.Geom.Rectangle(
+      -TAP_PAD_X, -TAP_PAD_Y, obj.width + TAP_PAD_X * 2, obj.height + TAP_PAD_Y * 2
+    );
+    obj.setInteractive({ hitArea, hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
+  }
+
+  // Same padding, but in screen space (matching getBounds()) for the
+  // click-guard in isPointOverUI -- must stay in sync with makeTappable
+  // above, or a tap landing in the padding would both hit the button and
+  // fall through to steer the flame underneath it.
+  private paddedBounds(obj: Phaser.GameObjects.Text): Phaser.Geom.Rectangle {
+    const b = obj.getBounds();
+    return new Phaser.Geom.Rectangle(b.x - TAP_PAD_X, b.y - TAP_PAD_Y, b.width + TAP_PAD_X * 2, b.height + TAP_PAD_Y * 2);
+  }
+
   create(){
     this.title = this.add.text(24, 22, 'THE FLAME', {
       fontFamily:'Inter, sans-serif', fontSize:'12px', color:'#ffffff'
@@ -61,22 +93,22 @@ export class UIScene extends Phaser.Scene {
 
     this.tiltButton = this.add.text(24, this.scale.height - 32, 'TILT: OFF', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
-    }).setScrollFactor(0).setDepth(10).setAlpha(.6)
-      .setInteractive({ useHandCursor: true });
+    }).setScrollFactor(0).setDepth(10).setAlpha(.6);
+    this.makeTappable(this.tiltButton);
     this.tiltButton.on('pointerdown', () => this.game.events.emit('ui:requestToggleControlMode'));
 
     // Bottom-center -- bottom-left (TILT) and bottom-right (SKILL TREE) are
     // already taken. Same fixed-screen-position/click-guard pattern as both.
     this.soundButton = this.add.text(this.scale.width / 2, this.scale.height - 32, 'SOUND: ON', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
-    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6)
-      .setInteractive({ useHandCursor: true });
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6);
+    this.makeTappable(this.soundButton);
     this.soundButton.on('pointerdown', () => this.game.events.emit('ui:requestToggleMute'));
 
     this.skillTreeButton = this.add.text(this.scale.width - 24, this.scale.height - 32, 'SKILL TREE: 0 PTS', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(.6)
-      .setInteractive({ useHandCursor: true }).setVisible(false);
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(.6).setVisible(false);
+    this.makeTappable(this.skillTreeButton);
     this.skillTreeButton.on('pointerdown', () => {
       this.listOpen = !this.listOpen;
       this.renderSkillTreeLines();
@@ -85,8 +117,8 @@ export class UIScene extends Phaser.Scene {
     for(let i = 0; i < SKILL_TREE.length; i++){
       const line = this.add.text(this.scale.width - 24, this.scale.height - 32, '', {
         fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
-      }).setOrigin(1, 0).setScrollFactor(0).setDepth(10)
-        .setInteractive({ useHandCursor: true }).setVisible(false);
+      }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setVisible(false);
+      this.makeTappable(line);
       // nodeId is bound after the first 'ui:skillTreeChanged' event arrives
       // (see renderSkillTreeLines) -- the listener reads it fresh each time
       // via this.latestNodes rather than being rebuilt per-node.
@@ -100,8 +132,8 @@ export class UIScene extends Phaser.Scene {
 
     this.settingsButton = this.add.text(this.scale.width / 2, 22, 'SETTINGS', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
-    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6)
-      .setInteractive({ useHandCursor: true });
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6);
+    this.makeTappable(this.settingsButton);
     this.settingsButton.on('pointerdown', () => {
       this.settingsOpen = !this.settingsOpen;
       this.renderSettingsLines();
@@ -109,14 +141,14 @@ export class UIScene extends Phaser.Scene {
 
     this.colorblindLine = this.add.text(this.scale.width / 2, 22, 'Colorblind: OFF', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
-    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6).setVisible(false)
-      .setInteractive({ useHandCursor: true });
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6).setVisible(false);
+    this.makeTappable(this.colorblindLine);
     this.colorblindLine.on('pointerdown', () => this.game.events.emit('ui:requestToggleColorblind'));
 
     this.reducedMotionLine = this.add.text(this.scale.width / 2, 22, 'Reduced Motion: OFF', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffffff'
-    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6).setVisible(false)
-      .setInteractive({ useHandCursor: true });
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(10).setAlpha(.6).setVisible(false);
+    this.makeTappable(this.reducedMotionLine);
     this.reducedMotionLine.on('pointerdown', () => this.game.events.emit('ui:requestToggleReducedMotion'));
 
     this.layout();
@@ -149,6 +181,7 @@ export class UIScene extends Phaser.Scene {
 
   onControlModeChanged = ({ label }: { label: string }) => {
     this.tiltButton.setText(label);
+    this.makeTappable(this.tiltButton);
   };
 
   onSkillTreeUnlocked = () => {
@@ -157,6 +190,7 @@ export class UIScene extends Phaser.Scene {
 
   onAudioMuteChanged = ({ label }: { label: string }) => {
     this.soundButton.setText(label);
+    this.makeTappable(this.soundButton);
   };
 
   onColorblindChanged = ({ on }: { on: boolean }) => {
@@ -172,12 +206,16 @@ export class UIScene extends Phaser.Scene {
   renderSettingsLines(){
     this.colorblindLine.setText(`Colorblind: ${this.colorblindOn ? 'ON' : 'OFF'}`).setVisible(this.settingsOpen);
     this.reducedMotionLine.setText(`Reduced Motion: ${this.reducedMotionOn ? 'ON' : 'OFF'}`).setVisible(this.settingsOpen);
+    // ON/OFF differ in width by a few px -- keep the padded hit area exact.
+    this.makeTappable(this.colorblindLine);
+    this.makeTappable(this.reducedMotionLine);
   }
 
   onSkillTreeChanged = ({ points, nodes }: { points: number; nodes: SkillNodeView[] }) => {
     this.latestPoints = points;
     this.latestNodes = nodes;
     this.skillTreeButton.setText(`SKILL TREE: ${toDisplayNumber(points)} PTS`);
+    this.makeTappable(this.skillTreeButton);
     this.renderSkillTreeLines();
   };
 
@@ -186,6 +224,11 @@ export class UIScene extends Phaser.Scene {
       const line = this.skillTreeLines[i];
       if(!line) return;
       line.setText(`${node.name} — ${toDisplayNumber(node.cost)}${node.owned ? ' (owned)' : ''}`);
+      // Text length varies per node/state, so the padded hit area (sized
+      // off obj.width at makeTappable-call time) needs recomputing every
+      // time the text actually changes -- it started at width 0 (line was
+      // created with empty text) and would otherwise stay wrong forever.
+      this.makeTappable(line);
       line.setVisible(this.listOpen);
       line.setAlpha(node.owned ? 0.35 : node.afford ? 0.9 : 0.45);
       line.setColor(node.owned ? '#7fffb0' : node.afford ? '#ffb347' : '#888888');
@@ -195,15 +238,15 @@ export class UIScene extends Phaser.Scene {
   // Deliberate narrow exception to the event-only communication rule -- see
   // the comment at the call site in FlameScene.aimAt for the reasoning.
   isPointOverUI(x: number, y: number): boolean {
-    if(this.tiltButton.visible && Phaser.Geom.Rectangle.Contains(this.tiltButton.getBounds(), x, y)) return true;
-    if(this.soundButton.visible && Phaser.Geom.Rectangle.Contains(this.soundButton.getBounds(), x, y)) return true;
-    if(this.skillTreeButton.visible && Phaser.Geom.Rectangle.Contains(this.skillTreeButton.getBounds(), x, y)) return true;
+    if(this.tiltButton.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.tiltButton), x, y)) return true;
+    if(this.soundButton.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.soundButton), x, y)) return true;
+    if(this.skillTreeButton.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.skillTreeButton), x, y)) return true;
     for(const line of this.skillTreeLines){
-      if(line.visible && Phaser.Geom.Rectangle.Contains(line.getBounds(), x, y)) return true;
+      if(line.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(line), x, y)) return true;
     }
-    if(Phaser.Geom.Rectangle.Contains(this.settingsButton.getBounds(), x, y)) return true;
-    if(this.colorblindLine.visible && Phaser.Geom.Rectangle.Contains(this.colorblindLine.getBounds(), x, y)) return true;
-    if(this.reducedMotionLine.visible && Phaser.Geom.Rectangle.Contains(this.reducedMotionLine.getBounds(), x, y)) return true;
+    if(Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.settingsButton), x, y)) return true;
+    if(this.colorblindLine.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.colorblindLine), x, y)) return true;
+    if(this.reducedMotionLine.visible && Phaser.Geom.Rectangle.Contains(this.paddedBounds(this.reducedMotionLine), x, y)) return true;
     return false;
   }
 

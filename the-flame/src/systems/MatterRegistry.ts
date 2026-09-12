@@ -96,7 +96,7 @@ export class MatterRegistry {
     const y = Phaser.Math.Between(b.y + margin, Math.max(b.y + margin, b.y + b.h - margin));
 
     const flame = this.host.getFlame();
-    if(Phaser.Math.Distance.Between(x, y, flame.x, flame.y) < 120) return;
+    if(Phaser.Math.Distance.Between(x, y, flame.x, flame.y) < BURNING.safeZoneRadius) return;
 
     const tier = this.pickTier(weights);
     const r = Phaser.Math.Between(tier.radiusMin, tier.radiusMax);
