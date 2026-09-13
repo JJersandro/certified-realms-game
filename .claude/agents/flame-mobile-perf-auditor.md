@@ -200,6 +200,19 @@ Playwright pattern already established in this project) with a phone-sized viewp
 context (`hasTouch: true`, a mobile `userAgent`, device scale factor 2-3x) rather than reasoning
 about mobile behavior from the desktop code alone. Screenshot before/after any fix.
 
+**Default to short, targeted measurements, not long sustained loops.** This environment's WebGL
+is software-rendered (SwiftShader, no real GPU) and has been measured running as low as ~2fps
+under load -- a sustained-loop frame-budget check that would take ~16s of real gameplay can
+stretch past 100s+ here, and that gap is an environment artifact, not signal about the game's
+real-device performance. Prefer direct instrumentation (a `page.evaluate()` micro-benchmark
+calling the suspect function N times and timing it, the same technique that caught the
+`emitSkillTreeChanged()`/`setColor()` cost) over a long organic play loop whenever you're
+checking a specific function's per-call cost -- it's faster, more precise, and isolates the
+actual code path instead of also measuring this container's rendering overhead. Reach for a
+longer sustained-loop run only when you specifically need to observe accumulation over time
+(a suspected memory/object leak, or a regression someone already suspects) rather than as the
+default first move for every audit.
+
 ## Reporting
 
 For each finding: name the file/line, the concrete failure mode (a stutter at N fuel instances,
