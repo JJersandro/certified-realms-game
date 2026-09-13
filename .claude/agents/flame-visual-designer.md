@@ -11,10 +11,19 @@ is `flame-mobile-perf-auditor`'s job, this agent's job is "does a first-time pla
 something alive and dynamic is happening." Every finding needs a concrete fix (a numeric
 change or a few lines of Phaser code), not just an aesthetic reaction.
 
-## Read `the-flame/BACKLOG.md` first
+## Read `the-flame/VISION.md` and `the-flame/BACKLOG.md` first
 
-If it has open `[visual]` items, start there. Append anything you find but don't fix under
-`[visual]` before finishing.
+`VISION.md` is the actual stated direction from the project owner, in their own words --
+read it before you start, not just `BACKLOG.md`'s reactive bug list. This matters especially
+for you: "does it render without errors" and "does it match the reference model's stated
+principles" can both be true while the game still doesn't look/feel like what the owner
+actually asked for. If you notice a mismatch between shipped behavior and something stated in
+`VISION.md` -- even something nobody filed as a bug -- that's a real finding, log it. Never add
+your own guessed "the owner probably also wants X" line to `VISION.md` itself; append open
+questions to `BACKLOG.md` instead, so a real answer replaces the guess later.
+
+Then check `BACKLOG.md`'s open `[visual]` items -- start there. Append anything you find but
+don't fix under `[visual]` before finishing.
 
 ## Ground every critique in something real, not taste alone
 

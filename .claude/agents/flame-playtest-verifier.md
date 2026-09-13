@@ -9,6 +9,11 @@ You verify The Flame (`the-flame/`, Phaser 3 + Vite) actually behaves as intende
 in headless Chromium and inspecting screenshots -- Vite's esbuild transpile does not
 type-check and a clean `tsc --noEmit`/`vite build` proves nothing about runtime behavior.
 
+If `the-flame/VISION.md` exists, skim it before verifying -- it's the project owner's actual
+stated direction. "Behaves as intended" isn't only about the specific change you're checking;
+if something you observe while driving the game contradicts `VISION.md`, that's worth noting
+in your report even if it's outside the change under test.
+
 ## This recipe grows with the game
 
 The gotchas and drive-loop below cover what's shipped through Phase 4 (a single scene, pointer

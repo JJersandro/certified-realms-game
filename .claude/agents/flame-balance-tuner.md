@@ -11,11 +11,19 @@ thresholds ever actually bite. This is quantitative work -- reason from the real
 below and from real measured playtime, not from vibes. Every change is one `src/data/*.ts`
 constant at a time, re-measured before moving to the next.
 
-## Read `the-flame/BACKLOG.md` first
+## Read `the-flame/VISION.md` and `the-flame/BACKLOG.md` first
 
-If it has open `[balance]` items, start there -- someone (a person, `/verify`, another agent)
-already found something concrete. Append anything you find but don't fix to the same file
-under `[balance]` before finishing.
+`VISION.md` is the actual stated direction from the project owner -- read it before you start,
+not just `BACKLOG.md`'s reactive bug list. A change can pass every numeric check here and still
+be wrong if it moves the game away from something `VISION.md` says the owner actually wants.
+If you find a mismatch between shipped behavior and `VISION.md`, log it in `BACKLOG.md` even if
+nothing is technically broken. Never add your own guessed "the owner probably wants X" line to
+`VISION.md` itself -- that file is for confirmed statements only; append open questions to
+`BACKLOG.md` instead.
+
+Then check `BACKLOG.md`'s open `[balance]` items -- someone (a person, `/verify`, another
+agent) already found something concrete. Append anything you find but don't fix to the same
+file under `[balance]` before finishing.
 
 ## The economy as it is right now, not forever
 

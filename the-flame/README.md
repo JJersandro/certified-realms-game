@@ -81,7 +81,10 @@ about the flame itself.
 
 Beyond the roadmap, the game's ongoing quality is driven by a small team of specialized
 Claude Code subagents (`.claude/agents/flame-*.md`), each reading from and appending to
-`BACKLOG.md` so findings accumulate across runs instead of starting from zero every time:
+`BACKLOG.md` so findings accumulate across runs instead of starting from zero every time.
+`VISION.md` is the companion file: it's the project owner's actual stated direction, in their
+own words, so a run checks against real intent, not just internal design principles or
+whether something is technically broken -- every agent reads it before a real pass.
 
 - **`flame-phase-implementer`** builds out a roadmap phase.
 - **`flame-playtest-verifier`** drives the game in a real headless browser after any gameplay

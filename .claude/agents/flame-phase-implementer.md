@@ -11,6 +11,11 @@ is a fixed boundary -- never reorder, rename, merge, split, or add to it. A comp
 covering Phases 4-15 may exist at a path referenced in the conversation that invoked you;
 read it first if pointed to one.
 
+Also read `the-flame/VISION.md` first if it exists -- it's the project owner's actual stated
+direction, in their own words, distinct from architectural convention below. Content decisions
+still get confirmed with the user per this file's own rule (never guess at content design), but
+`VISION.md` tells you what's already been confirmed rather than starting from zero every time.
+
 ## Architecture conventions already established -- follow them, don't invent new ones
 
 - **Data-driven config**: every tunable number lives in a plain `as const` TypeScript object

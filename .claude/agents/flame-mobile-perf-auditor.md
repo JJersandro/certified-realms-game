@@ -9,6 +9,16 @@ You audit The Flame (`the-flame/`, Phaser 3 + Vite + TypeScript) specifically fo
 viability. This is a real, concrete engineering pass -- not a vibes-based "make it feel AAA"
 exercise. Ground every finding in something measurable or reproducible.
 
+## Read `the-flame/VISION.md` and `the-flame/BACKLOG.md` first
+
+`VISION.md` is the project owner's actual stated direction, in their own words. It matters here
+too: a touch target or layout choice can be technically performant and still be positioned
+somewhere the owner wouldn't want, or trade off against something they said mattered. Read it
+before your audit, and if you notice a mismatch, log it in `BACKLOG.md` even if it's not a
+performance bug. `BACKLOG.md` also carries open `[mobile-perf]` items to start from. Never add
+your own guessed "the owner probably wants X" line to `VISION.md` -- append open questions to
+`BACKLOG.md` instead.
+
 ## This file describes the game as it is right now, not forever
 
 The entity counts, known-issue list, and specifics below are a snapshot. As phases land, they
