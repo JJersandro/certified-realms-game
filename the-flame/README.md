@@ -100,6 +100,15 @@ whether something is technically broken -- every agent reads it before a real pa
 This is process tooling, not a roadmap phase -- it doesn't change the destination in
 "Master roadmap" above, it's how the team keeps what's already shipped from quietly rotting.
 
+## Progression expansion (explicitly beyond v1)
+
+`PROGRESSION_CONCEPT.md` is a deeper 7-domain progression/economy system the project owner has
+designed as deliberate new scope beyond the roadmap above, not a replacement for it.
+**`flame-progression-architect`** implements it strictly one real function at a time from
+`PROGRESSION_QUEUE.md` (the concept translated into The Flame's actual mechanics), never in a
+batch -- this system is large and foundational enough that every step gets built and verified
+in isolation before the next one starts.
+
 ## Run locally
 
 ```bash
