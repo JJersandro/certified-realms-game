@@ -24,18 +24,29 @@ around the discrepancy silently.
    every frame (contact distance checks, HP drain, particle triggers) for *every* alive fuel
    instance in the world, not just what's on screen -- there is no camera-distance culling yet.
    Since Phase 5, total instance count is no longer one flat constant: it's
-   `sum(region.baseFuelCount * rolled density)` across `WORLD.regions` in `worldData.ts`
-   (currently 4 regions, ~45-65 base each, density 0.5-1.1x -> roughly 150-250 alive at once,
-   spread across a 4000x3000 world well beyond the ~1024x700 viewport). Check the current
-   totals against that formula and estimate per-frame cost. Since Phase 11, `WorldManager.
-   regenerate()` re-rolls density and repopulates on every full world clear, so this per-frame
-   fuel count resets to roughly the same 150-250 range each time (it does not compound across
-   worlds -- `MatterRegistry.fuels` is replaced wholesale, not appended to) -- confirm this stays
-   true as escalating worlds are played through repeatedly in one session. Now that the world is
-   bigger than the viewport, distance-from-camera culling (skip or coarsen updates for fuel far
-   outside the visible area) is a real, concrete optimization to consider -- flag it explicitly if
-   instance counts climb further in later phases. Also flag anything O(n²) (e.g. a naive
-   cascading-ignition proximity check across all burning×idle pairs) before it ships.
+   `sum(region.baseFuelCount * rolled density)` across `WORLD.regions` in `worldData.ts`. As of
+   2026-09-13 (a `[balance]` change bumped `baseFuelCount` ~50% per-region to fix a
+   nothing-reachable pacing problem -- see `BACKLOG.md`), the 4 regions are 90/95/80/65 base at
+   density ranges 0.7-1.0/0.8-1.1/0.6-0.9/0.5-0.8 respectively (not one flat range) -> a real
+   total of **roughly 220-320 alive at once** (measured directly, several sessions: 231-290),
+   not the ~150-250 an earlier snapshot of this file described -- re-check this number against
+   `worldData.ts` yourself rather than trusting either figure, since it's exactly the kind of
+   thing this file warns goes stale. Spread across a 4000x3000 world well beyond the ~1024x700
+   viewport. Since Phase 11, `WorldManager.regenerate()` re-rolls density and repopulates on
+   every full world clear, so this per-frame fuel count resets to roughly the same range each
+   time (it does not compound across worlds -- `MatterRegistry.fuels` is replaced wholesale, not
+   appended to) -- reconfirmed 2026-09-13 across 4 simulated clears in one session (260-280 fuel
+   each time, never compounding). Now that the world is bigger than the viewport,
+   distance-from-camera culling (skip or coarsen updates for fuel far outside the visible area)
+   is still not implemented and remains a real, concrete optimization to consider -- flag it
+   explicitly if instance counts climb further in later phases; it has not yet been necessary at
+   ~220-320. Also flag anything O(n²) (e.g. a naive cascading-ignition proximity check across all
+   burning×idle pairs) before it ships -- `MatterRegistry.tryCascade()` still has exactly this
+   shape (confirmed present 2026-09-13) but a direct worst-case stress test (forced 100% cascade
+   chance, max-radius tier, max level) only touched ~230 fuel in one linear pass with no
+   recursion at today's density, because real spawn spacing (~200px+ apart) keeps cascade radii
+   (tens to ~100px) from actually chaining -- currently benign, re-test if density/world-size
+   changes.
 2. **Unbounded growth.** `this.scorches` (persistent burn-mark array) grows forever with no cap
    or pooling -- confirm whether this has been addressed yet (it was flagged as a known Phase 14
    item) and whether anything *else* added since has the same shape (an array that only grows,
@@ -55,15 +66,66 @@ around the discrepancy silently.
    accumulated) and that two running scenes doesn't itself add meaningful per-frame overhead
    (`UIScene` has no `update()` loop of its own -- it is purely event-reactive, so this should be
    close to free, but confirm rather than assume if instance counts climb further).
+   **2026-09-13 update**: the payload/array itself isn't a growth risk (confirmed, as above), but
+   a *frequency* risk was found and fixed in the handler it drives -- since a `[balance]`
+   skill-point trickle change made `'ui:skillTreeChanged'` fire on every single fuel burn (not
+   just rare full-clear/purchase events), `UIScene.renderSkillTreeLines()` was unconditionally
+   calling `Text#setColor()` on all 7 skill-tree lines every single burn, regardless of whether
+   the list was even open/visible. Unlike `Text#setText()` (which short-circuits on an unchanged
+   value), `TextStyle#setColor()` has no such guard and always forces a full canvas
+   redraw+texture-reupload -- measured at ~115us per `emitSkillTreeChanged()` call whether the
+   list was open or closed, vs ~0.2-0.4us for a bare event emission. Fixed by gating
+   `renderSkillTreeLines()`'s work behind `this.listOpen` in `onSkillTreeChanged()` -- closed-list
+   cost dropped to ~2.5us (~46x). This is the general lesson worth carrying into future per-frame
+   audits: **an event firing at high frequency is only as cheap as its most expensive listener,
+   and Phaser `GameObject` setters are not uniformly cheap no-ops on an unchanged value** --
+   `setText`/`setPosition`-style setters often short-circuit, but not all of them do (`setColor`
+   doesn't); benchmark real listener chains under realistic call frequency rather than assuming
+   from the emitter side alone.
 3. **Touch input correctness.** Phaser's `pointermove`/`pointerdown` already unify mouse and
    touch, but verify on an actual touch-emulated viewport (Playwright's `page.emulate` or a
    touch-capable device profile) that: the flame follows a finger drag smoothly, there's no
    accidental page-scroll/pinch-zoom competing with canvas input (check `touch-action` CSS and
    any missing `preventDefault` on touch events), and tap targets/HUD text are legible at phone
    DPI and safe-area insets (notches, home-indicator bars) aren't covering gameplay-critical UI.
+   **2026-09-13 update**: verified with a *real* touch gesture (not just mouse events under a
+   touch-emulated context) via a CDP session's `Input.dispatchTouchEvent`
+   (touchStart/touchMove-xN/touchEnd) -- the flame followed correctly, `window.scrollX/scrollY`
+   stayed 0, `visualViewport.scale` stayed 1 (no scroll/zoom competition), consistent with
+   Phaser's default `inputTouchCapture` (`preventDefault()` on canvas-targeted touch events,
+   confirmed by reading `TouchManager.startListeners` in `phaser.esm.js`) already working. Found
+   one real gap and fixed it defensively: `index.html` had no `touch-action` CSS at all, and
+   Safari/iOS pinch-zoom is partly driven by `gesturestart`/`gesturechange` events outside the
+   standard touch pipeline that a `touchmove` handler's `preventDefault()` doesn't reliably catch
+   in every iOS version -- this headless-Chromium environment can't exercise that Safari-specific
+   path to prove or disprove it directly, so `touch-action:none` was added to `html,body,#game`
+   and the canvas in `index.html` as the standard belt-and-suspenders fix rather than leaving it
+   as an unverified risk. Re-tested the CDP touch-drag after the change to confirm no regression.
+   Safe-area insets checked and found to be a non-issue by omission: `index.html`'s viewport meta
+   has no `viewport-fit=cover`, so the layout viewport already excludes the unsafe area by
+   default (spec default `viewport-fit: auto` behaves as `contain`) -- fixed-offset HUD text is
+   not at risk of notch/home-indicator overlap precisely because this game never opted into
+   full-bleed coverage. Don't "fix" this by adding `viewport-fit=cover` + manual `env()` insets
+   unless a future phase deliberately wants full-bleed backgrounds -- that would *introduce* the
+   overlap risk this omission currently avoids.
 4. **Bundle size.** `vite build` currently warns about a 500kB+ chunk (Phaser itself dominates
    it). Check whether this has grown further and whether code-splitting or a lighter Phaser
    build target is warranted -- phone users are far more bandwidth/cache-sensitive than desktop.
+   **2026-09-13 update**: current single-chunk output is 1,246.73 kB minified / 343.24 kB gzip
+   (grown in absolute terms since whatever Phaser version this line was originally written
+   against, still ~100% attributable to Phaser itself -- `node_modules/phaser/dist/phaser.min.js`
+   alone is ~1.2MB, this game's own ~2500-line source is negligible after minification). New
+   concrete finding: this game uses **zero** Phaser physics (`Arcade`/`Matter`) despite
+   `MatterRegistry`/`Fuel` naming suggesting otherwise (those are this project's own plain
+   TypeScript classes -- confirmed via `grep` finding no `Phaser.Physics`/`scene.physics`
+   references anywhere in `src/`), yet `import Phaser from 'phaser'` bundles both unused physics
+   engines. `phaser-arcade-physics.min.js` (Matter excluded) is only ~100KB smaller -- not
+   dramatic, and no off-the-shelf Phaser distribution excludes both engines while keeping
+   renderer/input/tween/FX. A real fix needs a custom Phaser build (webpack `DefinePlugin`-style
+   exclusion flags per Phaser's own docs) or bundler alias/exclude config -- genuine engineering
+   effort that also forecloses easy access to real physics in a later phase, so it's a
+   design/build-tooling call to flag to the project owner, not something to implement
+   unilaterally in an audit pass.
 5. **Battery/thermal.** Look for anything running continuously at full tilt with no
    visibility-based throttling -- e.g. does the game pause or reduce particle emission when the
    tab/app is backgrounded (`document.visibilitychange` / Phaser's own pause-on-blur)? A phone

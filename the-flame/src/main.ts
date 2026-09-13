@@ -149,7 +149,8 @@ class FlameScene extends Phaser.Scene {
         this.checkWorldConsumed();
       },
       onIgnite: () => this.audio.playIgnite(),
-      onEmberCrackle: () => this.audio.playEmberCrackle()
+      onEmberCrackle: () => this.audio.playEmberCrackle(),
+      onBurnComplete: (intensity) => this.playBurnCompleteFlourish(intensity)
     });
 
     this.world = new WorldManager(this.matterSystem);
@@ -447,6 +448,46 @@ class FlameScene extends Phaser.Scene {
     // a tier-up is a bigger event than a single ignition.
     this.particles.setPosition(this.flame.x, this.flame.y);
     this.particles.explode(10);
+  }
+
+  // flame-visual-designer finding (2026-09-13, BACKLOG.md [visual]): the
+  // "one particle burst + one audio ping" shape level-up/tier-up used to
+  // have and no longer do (see playLevelUpFlourish/playTierUpFlourish above)
+  // was still true of finishBurn() -- a burn completing (fuel actually gone,
+  // XP awarded, scorch mark placed) got a particle burst and nothing on the
+  // flame body itself. Deliberately *not* added to ignite() instead: it's
+  // the single most frequent event in the game and a cascade chain
+  // (tryCascade in MatterRegistry) can call ignite() many times in one
+  // frame, so a per-ignite body reaction would pile into overlapping,
+  // jittery tweens during exactly the moments already the most visually
+  // busy. finishBurn() calls land staggered across each fuel's own
+  // burn-duration timer instead (see MatterHost.onBurnComplete's comment),
+  // so it doesn't have that pile-up problem. intensity (0..1, the burning
+  // fuel's radius normalized against the largest tier's max radius) scales
+  // the reaction down to near-nothing for the common small kindling/brush
+  // burns that make up most of the game's volume, and up to a clearly
+  // visible (but still smaller than a level-up's) pop for a rare large
+  // embercore burn -- reuses the same scale-pop + glow-spike shape as
+  // playLevelUpFlourish rather than inventing a third visual language.
+  playBurnCompleteFlourish(intensity: number){
+    const motionScale = this.reducedMotion ? ACCESSIBILITY.reducedMotionScale : 1;
+    const pop = 1 + (0.04 + intensity * 0.10) * motionScale;
+    const duration = 70 + intensity * 40;
+    for(const target of [this.flame, this.core]){
+      this.tweens.add({
+        targets: target,
+        scale: pop,
+        duration,
+        yoyo: true,
+        ease: 'Quad.Out'
+      });
+    }
+    if(this.flameGlow){
+      const baseOuter = this.flameGlow.outerStrength;
+      const spike = (0.4 + intensity * 1.6) * motionScale;
+      this.flameGlow.outerStrength = baseOuter + spike;
+      this.time.delayedCall(duration + 20, () => { if(this.flameGlow) this.flameGlow.outerStrength = baseOuter; });
+    }
   }
 
   // No longer a mirror of tryLevelUp() (which is XP-only, see above) -- this is the one

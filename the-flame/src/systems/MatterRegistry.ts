@@ -61,9 +61,30 @@ export type MatterHost = {
   // getFlame() skill-tree bonuses above.
   onIgnite: () => void;
   onEmberCrackle: () => void;
+  // flame-visual-designer finding (2026-09-13, BACKLOG.md [visual]): ignite()
+  // is deliberately left with only its existing single burst+ping -- a
+  // cascade chain (tryCascade below) can call ignite() many times in one
+  // frame/tick, so a per-ignite flame-body reaction would pile into
+  // overlapping, jittery tweens during exactly the moments that are already
+  // the most visually busy. finishBurn() ("this fuel is actually gone, XP
+  // awarded") doesn't have that problem -- a cascade's several finishBurn()
+  // calls land staggered across each fuel's own independent burn-duration
+  // timer (duration scales with fuel.r, so even same-tier fuel rarely
+  // finishes on the same tick), not stacked in one frame. intensity is the
+  // burning fuel's own radius normalized against the largest tier's max
+  // radius (see finishBurn), so common small kindling/brush burns (most of
+  // the game's volume) get a barely-there flourish and rare large embercore
+  // burns get a bigger one.
+  onBurnComplete: (intensity: number) => void;
 };
 
 const defaultSpawnWeights = MATTER.map(tier => tier.spawnWeight);
+
+// Normalization anchor for finishBurn()'s intensity argument -- the largest
+// radius any tier can ever spawn (embercore's radiusMax), so intensity is a
+// stable 0..1 scale across every tier/instance rather than something that
+// shifts if MATTER's per-tier ranges are retuned later.
+const maxFuelRadius = MATTER.reduce((max, tier) => Math.max(max, tier.radiusMax), 0);
 
 export type SpawnBounds = { x: number; y: number; w: number; h: number };
 
@@ -171,6 +192,7 @@ export class MatterRegistry {
     const xpYield = baseXp * flame.xpYieldMultiplier;
     this.host.onFuelBurned(xpYield);
     this.host.addHeat(fuel.r / 22);
+    this.host.onBurnComplete(Phaser.Math.Clamp(fuel.r / maxFuelRadius, 0, 1));
 
     this.host.particles.setPosition(fuel.x, fuel.y);
     this.host.particles.explode(Phaser.Math.Clamp(Math.floor(fuel.r * 2.2), BURNING.emberBurst.min, BURNING.emberBurst.max));

@@ -25,22 +25,43 @@ const TAP_PAD_Y = 16;
 // flame-balance-tuner finding (2026-09-12): TAP_PAD_Y=16 gives every
 // standalone button (TILT/SOUND) a generous, non-overlapping ~44px target
 // since nothing else sits within that radius of them. It does NOT work for
-// any *vertically stacked list* (the skill tree button + its 7 lines, 18px
-// apart; the settings button + its 2 lines, 20px apart) -- a 16px pad on
-// both sides of two neighbors only 18-20px apart makes their padded hit
-// boxes overlap by ~26px, so a real tap square in the middle of one line's
-// own visible text can still resolve to a *different* line's (or the
+// any *vertically stacked list* (the skill tree button + its 7 lines; the
+// settings button + its 2 lines) at their old 18-20px row pitch -- a 16px
+// pad on both sides of two neighbors only 18-20px apart made their padded
+// hit boxes overlap by ~26px, so a real tap square in the middle of one
+// line's own visible text could resolve to a *different* line's (or the
 // button's) pointerdown handler. Confirmed via `scene.input.hitTestPointer()`
 // and a real click that purchased 'kindling-heart' while aimed at 'Ember
-// Reach' text. This smaller pad is sized to the tightest gap in either list
-// (18px pitch - ~12px text height = 6px gap => pad*2 <= 6) with a 2px safety
-// margin against font-metric rounding, so adjacent padded boxes in a list
-// never touch. This does make those specific targets smaller than the
-// ~44px mobile-tap guidance the comment above already flags as an existing
-// shortfall -- widening the list's own row pitch instead (a layout change,
-// not a numeric-constant one) is the real fix for that and is flagged to
-// BACKLOG.md's [visual]/[mobile-perf] sections rather than done here.
-const LIST_TAP_PAD_Y = 2;
+// Reach' text. Fixed at the time by shrinking the pad to LIST_TAP_PAD_Y=2,
+// which stopped the overlap but left every list row only ~17px tall --
+// still well under the ~44px guidance above (flagged in BACKLOG.md as a
+// follow-up rather than fixed then, since padding alone can't grow a target
+// past half its neighbor's distance without reintroducing the same bug).
+//
+// flame-mobile-perf-auditor finding (2026-09-12): fixed for real by widening
+// the row pitch itself (LIST_ROW_PITCH below, replacing the old 18/20px
+// spacing) so a much bigger pad fits without adjacent boxes touching. Sized
+// by working backwards from how much vertical space a 7-row list can safely
+// use before its top row reaches the top-HUD row (title/stage labels at
+// y=22-56) on the shortest realistic phone viewport this needs to support --
+// a landscape phone at ~360-375px tall (e.g. iPhone SE landscape), not just
+// the taller portrait case. At LIST_ROW_PITCH=32 and LIST_TAP_PAD_Y=8, the
+// padded box is 13(text)+16=29px tall with a 3px gap to its neighbor (still
+// non-overlapping, same margin-against-font-rounding logic as before) and
+// the topmost of 7 skill-tree rows still clears the top-HUD row with ~7px of
+// margin to spare on a 360px-tall viewport (verified via Playwright at both
+// 390x844 portrait and 844x390/667x375 landscape, screenshots + hit tests).
+// This is a deliberate compromise, not full guidance compliance: a literal
+// 44px pitch for all 7 simultaneously-visible skill-tree rows would need
+// ~336px of vertical list space, more than a short landscape phone's entire
+// height has to give without colliding with other fixed HUD chrome -- true
+// 44px-per-row would require *not* showing all 7 rows at once (pagination or
+// a scrollable list), which is a bigger UX change than a padding/pitch
+// number and is left as an open follow-up if this comes up again. ~29px is
+// still a ~1.7x improvement over the ~17px it replaces and is the largest
+// pitch that stays collision-free on the shortest viewport checked.
+const LIST_ROW_PITCH = 32;
+const LIST_TAP_PAD_Y = 8;
 
 // Phase 12: all manually-positioned HUD chrome lives here now, running in
 // parallel with FlameScene ('flame'). FlameScene pushes state changes via
@@ -256,12 +277,40 @@ export class UIScene extends Phaser.Scene {
     this.makeTappable(this.reducedMotionLine, LIST_TAP_PAD_Y);
   }
 
+  // flame-mobile-perf-auditor finding (2026-09-13, BACKLOG.md [mobile-perf]):
+  // this event now fires on *every single fuel burn* (the skill-point
+  // trickle -- see BACKLOG.md's [balance] pacing item -- calls
+  // emitSkillTreeChanged() from onFuelBurned in main.ts, not just on the
+  // rare full-world-clear/purchase events this used to be limited to).
+  // renderSkillTreeLines() below unconditionally called Text#setColor() on
+  // all 7 lines every time, and unlike Text#setText() (which short-circuits
+  // via `if (value !== this._text)`), TextStyle#setColor() has no such
+  // guard -- it unconditionally calls `this.parent.updateText()`, a full
+  // canvas re-measure/redraw + WebGL texture re-upload, every call,
+  // regardless of whether the color string actually changed AND regardless
+  // of whether the line is even visible. Measured via direct benchmark
+  // (page.evaluate, 5000 calls): a real emitSkillTreeChanged() cost ~115us
+  // per call whether the list was open or closed (vs ~0.1-0.2us for a bare
+  // event emission with a no-op listener) -- isolating each piece showed
+  // line.setColor() alone costs ~10us per call even when the color value is
+  // unchanged, and this ran 7 times (once per skill node) on every burn.
+  // Not catastrophic at today's burn rates (a single burn's ~115us is a
+  // small fraction of a 16.6ms frame budget), but wasted work that scales
+  // linearly with simultaneous burns -- a big cascade finishing 20-50 fuel
+  // in a tight window would turn this into single-digit milliseconds of
+  // pure waste, entirely spent redrawing text nobody can see, since the
+  // list is closed the overwhelming majority of play time. Fixed by only
+  // calling the expensive per-line render when the list is actually open;
+  // latestNodes/latestPoints still update unconditionally so the panel
+  // shows fresh data the instant it's opened (the toggle handler below
+  // already calls renderSkillTreeLines() explicitly on every open/close,
+  // which still runs the full (now much rarer) redraw once per toggle).
   onSkillTreeChanged = ({ points, nodes }: { points: number; nodes: SkillNodeView[] }) => {
     this.latestPoints = points;
     this.latestNodes = nodes;
     this.skillTreeButton.setText(`SKILL TREE: ${toDisplayNumber(points)} PTS`);
     this.makeTappable(this.skillTreeButton, LIST_TAP_PAD_Y);
-    this.renderSkillTreeLines();
+    if(this.listOpen) this.renderSkillTreeLines();
   };
 
   renderSkillTreeLines(){
@@ -306,10 +355,10 @@ export class UIScene extends Phaser.Scene {
     this.skillTreeButton.setPosition(this.scale.width - 24, this.scale.height - 32);
     for(let i = 0; i < this.skillTreeLines.length; i++){
       const fromBottom = this.skillTreeLines.length - i;
-      this.skillTreeLines[i].setPosition(this.scale.width - 24, this.scale.height - 32 - fromBottom * 18);
+      this.skillTreeLines[i].setPosition(this.scale.width - 24, this.scale.height - 32 - fromBottom * LIST_ROW_PITCH);
     }
     this.settingsButton.setPosition(this.scale.width / 2, 22);
-    this.colorblindLine.setPosition(this.scale.width / 2, 22 + 20);
-    this.reducedMotionLine.setPosition(this.scale.width / 2, 22 + 40);
+    this.colorblindLine.setPosition(this.scale.width / 2, 22 + LIST_ROW_PITCH);
+    this.reducedMotionLine.setPosition(this.scale.width / 2, 22 + LIST_ROW_PITCH * 2);
   }
 }
