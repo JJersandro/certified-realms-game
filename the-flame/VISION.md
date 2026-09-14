@@ -38,19 +38,29 @@ line below, that's a finding worth raising even if nothing is technically "broke
   positioning, color, and other visual/layout choices may not yet have been discussed at all,
   and that's a gap, not a non-issue.
 
+## Resolved
+
+- **"Unique skill tree"** turned out to mean far more than distinct existing-tree nodes -- the
+  owner provided a full 7-domain progression concept (`PROGRESSION_CONCEPT.md`), now being
+  implemented one function at a time via `flame-progression-architect` from
+  `PROGRESSION_QUEUE.md`, whose "Decisions log" section holds the specific answers (no new
+  Economy currency; Ascension is a separate full reset for a separate "unique skills" tree,
+  regular skill-tree points untouched; Transcendence mixes multiple rule-changing effects).
+  Read that file's decisions log, not this one, for anything progression-related going forward.
+
 ## Open questions (do not guess at these -- ask)
 
 Per the project owner's own standing instruction earlier this session: *"let me decide even if
 I didn't immediately [ask]"* -- open creative/design decisions go back to them, not picked
-unilaterally by an agent. Known open items as of 2026-09-13:
+unilaterally by an agent. Known open items as of 2026-09-14:
 
-- Whether the skill tree's 7 nodes should feel more distinctly "unique" (different mechanics,
-  not just different percentage bonuses) -- flagged by the "unique skill tree" phrasing above,
-  not yet confirmed as an actual ask.
 - HUD/element positioning and color choices beyond what's already been fixed reactively
   (tap-target sizing, ribbon visibility, palette contrast for colorblind mode) -- explicitly
-  named by the owner as an area "haven't been spoken about," meaning real opinions likely exist
-  that no agent run has surfaced yet.
+  named by the owner as an area "haven't been spoken about." Six real screenshots (title, low/
+  mid/high-tier color progression, skill tree list, settings panel) were sent 2026-09-13 for the
+  owner to react to; **their specific feedback is still pending** -- don't guess at positioning/
+  color changes before it arrives, and don't re-send the same screenshots without a reason to
+  think the state has changed enough to matter.
 
 ## How to use this file
 
