@@ -76,6 +76,15 @@ export type MatterHost = {
   // the game's volume) get a barely-there flourish and rare large embercore
   // burns get a bigger one.
   onBurnComplete: (intensity: number) => void;
+  // PROGRESSION_QUEUE.md item 3 (Mastery counters) -- same "pure
+  // notification, no return value" shape as onIgnite/onEmberCrackle/
+  // onBurnComplete above: MatterRegistry has no direct reference to
+  // MasteryTracker, so FlameScene wires each of these three straight to a
+  // MasteryTracker.record*() call, the same way it wires the audio/visual
+  // callbacks above. tierId is a burned fuel's own fuel.tier.id.
+  onMasteryBurn: (tierId: number) => void;
+  onCascadeTriggered: () => void;
+  onRiskyIgnitionSurvived: () => void;
 };
 
 const defaultSpawnWeights = MATTER.map(tier => tier.spawnWeight);
@@ -165,8 +174,22 @@ export class MatterRegistry {
   // nearby idle matter, which can itself chain further -- recursion is
   // naturally bounded since ignite() is a no-op on anything not idle, so
   // each fuel enters this chain at most once.
-  private tryCascade(source: Fuel, flame: FlameSnapshot){
+  //
+  // Returns whether *this specific call* caught at least one further fuel --
+  // used by updateFuel()'s two call sites (below) to decide whether to
+  // report a Mastery "cascade triggered" event (PROGRESSION_QUEUE.md item
+  // 3). Deliberately counts once per chain-initiating ignition, not once
+  // per fuel a chain catches: the recursive `this.tryCascade(other, flame)`
+  // calls below are continuations of the same chain reaction, not new
+  // triggers, so their own return values are intentionally ignored here --
+  // only the outer call (from updateFuel, where a player-caused ignition
+  // starts the chain) is ever read by a caller that acts on it. A chain that
+  // catches zero fuel at its own immediate radius never happened at all for
+  // counting purposes, regardless of what a caught fuel's own recursion
+  // might otherwise have done.
+  private tryCascade(source: Fuel, flame: FlameSnapshot): boolean {
     const radius = source.r * source.tier.cascadeRadiusMultiplier;
+    let caughtAny = false;
     for(const other of this.fuels){
       if(other === source || !other.alive || other.burnState !== 'idle') continue;
       if(flame.level < other.tier.minLevelToIgnite) continue;
@@ -176,9 +199,11 @@ export class MatterRegistry {
       const dist = Phaser.Math.Distance.Between(source.x, source.y, other.x, other.y);
       if(dist > radius) continue;
 
+      caughtAny = true;
       this.ignite(other);
       this.tryCascade(other, flame);
     }
+    return caughtAny;
   }
 
   finishBurn(fuel: Fuel, flame: FlameSnapshot){
@@ -193,6 +218,12 @@ export class MatterRegistry {
     this.host.onFuelBurned(xpYield);
     this.host.addHeat(fuel.r / 22);
     this.host.onBurnComplete(Phaser.Math.Clamp(fuel.r / maxFuelRadius, 0, 1));
+    // Mastery burns-per-tier (PROGRESSION_QUEUE.md item 3): this is the
+    // point a burn actually completes, same as the onFuelBurned/
+    // onBurnComplete calls right above -- fuel.tier is still the same
+    // object it was created with, so fuel.tier.id correctly identifies
+    // which of the 7 tier counters to increment.
+    this.host.onMasteryBurn(fuel.tier.id);
 
     this.host.particles.setPosition(fuel.x, fuel.y);
     this.host.particles.explode(Phaser.Math.Clamp(Math.floor(fuel.r * 2.2), BURNING.emberBurst.min, BURNING.emberBurst.max));
@@ -229,7 +260,7 @@ export class MatterRegistry {
       if(inContact && ignitable){
         fuel.forceProgress = 0;
         this.ignite(fuel);
-        this.tryCascade(fuel, flame);
+        if(this.tryCascade(fuel, flame)) this.host.onCascadeTriggered();
         return;
       }
 
@@ -249,8 +280,14 @@ export class MatterRegistry {
           fuel.forcedBonus = true;
           this.host.addHeat(CHOICES.riskyIgnition.heatPenalty);
           this.host.applyStabilityPenalty(CHOICES.riskyIgnition.stabilityPenalty);
+          // The risky-ignition hold is already known to have succeeded at
+          // this exact point (forceProgress just crossed holdMs) -- "survived"
+          // (PROGRESSION_QUEUE.md item 3) means "completed," since this
+          // mechanic has no separate fail state to survive (releasing
+          // contact early just resets forceProgress to 0 above, penalty-free).
+          this.host.onRiskyIgnitionSurvived();
           this.ignite(fuel);
-          this.tryCascade(fuel, flame);
+          if(this.tryCascade(fuel, flame)) this.host.onCascadeTriggered();
         }
         return;
       }

@@ -94,13 +94,39 @@ not flagged; only choices that change what the system *is* are.
       -- 7 independent name/sentence pairs. Manually confirmed via
       `grep -inE "combat|enemy|enemies|boss|damage|loot"` that none of those terms appear in
       the new file.
-- [ ] **3. Mastery counters (tracking only, no rewards yet).** Add a small, plain state object
-      (parallel to how `SkillTreeManager` is a narrow, constructor-independent class) tracking:
-      burns-per-tier (7 counters), total cascades triggered, total risky ignitions survived,
-      total worlds cleared, cumulative world-space distance traveled. No UI, no currency, no
-      thresholds yet -- just correct incrementing, verified via unit tests (Vitest, following
-      the pattern in `src/systems/__tests__/SkillTreeManager.test.ts`) plus one real playtest
-      confirming the counters increment during actual play.
+- [x] **3. Mastery counters (tracking only, no rewards yet).** Done 2026-09-14. Added
+      `src/systems/MasteryTracker.ts` -- a narrow, constructor-independent class (same shape as
+      `SkillTreeManager`) tracking `burnsPerTier` (one slot per `MATTER` tier, length derived
+      from `MATTER.length` rather than hardcoded), `cascadesTriggered`, `riskyIgnitionsSurvived`,
+      `worldsCleared`, and `distanceTraveled` (cumulative scalar path length, not displacement).
+      Wired via `MatterRegistry`'s existing `MatterHost` notify-callback pattern: three new
+      callbacks (`onMasteryBurn`, `onCascadeTriggered`, `onRiskyIgnitionSurvived`) added to
+      `MatterHost` and called from `finishBurn()`/`updateFuel()` at the exact points those things
+      become true; `tryCascade()` now returns whether its own call caught at least one further
+      fuel (counted once per chain-initiating ignition, not once per fuel caught or per
+      recursive continuation) so `updateFuel()`'s two call sites can report it correctly.
+      `worldsCleared` (a new, separate Mastery-domain counter from `FlameScene.worldsCleared`,
+      which drives `ENDGAME`'s own unrelated escalation formula) increments in
+      `checkWorldConsumed()`. `distanceTraveled` accumulates from the flame's own real per-frame
+      movement delta in `update()`, post-position-clamp. No UI, no currency, no thresholds yet
+      (items 4/10/11). Note: this item's implementation was interrupted mid-run by a session
+      rate-limit (not a logic error -- resumed cleanly, no code needed redoing) and finished in
+      a follow-up pass.
+      Verified: `tsc --noEmit`, `vite build`, `npm test` (37 tests, 4 files -- 13 new in
+      `MasteryTracker.test.ts`, covering initial-zero state, independent per-tier accumulation,
+      out-of-range tier-id no-op safety, and cross-counter independence) all clean. Plus a real
+      headless Playwright playtest (`vite preview` + a temporary `window.__game` debug hook,
+      fully reverted after -- confirmed via `grep` finding zero remaining references) driving
+      every counter through its actual production code path rather than calling `record*()`
+      directly: a real contact-ignite-finishBurn cycle incremented the correct `burnsPerTier`
+      slot; a real `tryCascade()` call (with `Math.random` temporarily forced to guarantee the
+      probabilistic roll succeeds, the same technique `flame-mobile-perf-auditor` used
+      previously for this exact function per `BACKLOG.md`) incremented `cascadesTriggered`; 120
+      real `updateAll()` frame-ticks holding contact with an under-leveled fuel crossed
+      `CHOICES.riskyIgnition.holdMs` and incremented `riskyIgnitionsSurvived` via the real forced-
+      ignition path; real pointer-driven movement across several frames incremented
+      `distanceTraveled`; and a real `checkWorldConsumed()` call (after killing all fuel)
+      incremented `worldsCleared`. Zero console/page errors throughout.
 - [ ] **4. Mastery Points + first threshold reward.** Once item 3's counters exist: pick the
       single easiest, most legible counter (likely burns-per-tier) and award a small, flat
       Mastery Point the first time a threshold is crossed (e.g. "50 kindling burns"). One
@@ -117,6 +143,13 @@ not flagged; only choices that change what the system *is* are.
       heat generation, reusing existing `heat`/`GROWTH` levers) that scales with the flame's
       current velocity. OPEN DECISION: which existing stat it modifies, and the magnitude --
       implement the mechanism first with a conservative constant, real balance pass later.
+      Note (2026-09-14): a separate, smaller heat/stability -> movement feedback slice (see
+      project owner's own build plan, outside this queue) approaches the same
+      `FlameScene.update()`/`heat` neighborhood from the opposite direction (state -> velocity,
+      vs. this item's velocity -> state). That slice should land first so this item builds on a
+      heat/stability-aware movement system rather than two independent, mutually-unaware edits
+      to the same formulas -- not a reason to reorder this item ahead of items 4/5, just a
+      heads-up for whoever picks this item up.
 - [ ] **7. Tier-specific bonus choice ("Hunter" analog).** Let the player designate one matter
       tier as a focus (small new state, not a currency) for a bonus (XP yield or contact radius
       against that tier). OPEN DECISION: how the focus is chosen in-game (automatic? a UI
@@ -134,8 +167,13 @@ not flagged; only choices that change what the system *is* are.
       skillfully, not just avoiding it.
 - [ ] **12. Mastery-gated specialization nodes.** Once items 4/10/11 produce real Mastery Points
       across at least two counters: add the first Mastery-only nodes (spent from Mastery Points,
-      not skill points). OPEN DECISION: a new UI panel or extend the existing skill-tree list,
-      and whether these grant flat percentages or something qualitatively different.
+      not skill points). OPEN DECISION: a new UI panel or extend the existing skill-tree list.
+      The "flat percentages or something qualitatively different" half of this item's original
+      open decision is now pre-answered (2026-09-14, project owner): **qualitatively different**
+      -- both `PROGRESSION_CONCEPT.md`'s own golden rule ("progression moet de speler nieuwe
+      keuzes geven," not just bigger numbers) and an independent external design review
+      converged on the same answer, so treat it as settled rather than re-opening it when this
+      item comes up. The UI-panel-vs-extend-existing-list half remains genuinely open.
 - [ ] **13. Ascension: reset + new currency.** Add `ascensionPoints` (new resource) and a
       manual, player-triggered Ascension action (gated behind a minimum level so ascending
       immediately gives nothing) that resets `level`/`energy`/`flameSize` back to their starting

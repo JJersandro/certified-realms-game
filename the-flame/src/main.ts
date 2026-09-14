@@ -14,6 +14,7 @@ import { MatterRegistry } from './systems/MatterRegistry';
 import { WorldManager } from './systems/WorldManager';
 import { TiltControl } from './systems/TiltControl';
 import { SkillTreeManager } from './systems/SkillTreeManager';
+import { MasteryTracker } from './systems/MasteryTracker';
 import { AudioManager } from './systems/AudioManager';
 import { UIScene } from './scenes/UIScene';
 import { TitleScene } from './scenes/TitleScene';
@@ -59,6 +60,11 @@ class FlameScene extends Phaser.Scene {
   // next generated world; worldsCleared distinguishes the first clear's
   // flat escalation from every subsequent clear's random one.
   skillTree = new SkillTreeManager();
+  // PROGRESSION_QUEUE.md item 3: Mastery domain tracking-only counters --
+  // no UI/currency/thresholds yet (see MasteryTracker's own header comment).
+  // SkillTreeManager-shaped (no constructor dependency), same as skillTree
+  // above.
+  mastery = new MasteryTracker();
   worldStrength = 1.0;
   worldsCleared = 0;
   // Phase 13: all sound is synthesized at runtime via raw Web Audio, no
@@ -150,7 +156,12 @@ class FlameScene extends Phaser.Scene {
       },
       onIgnite: () => this.audio.playIgnite(),
       onEmberCrackle: () => this.audio.playEmberCrackle(),
-      onBurnComplete: (intensity) => this.playBurnCompleteFlourish(intensity)
+      onBurnComplete: (intensity) => this.playBurnCompleteFlourish(intensity),
+      // PROGRESSION_QUEUE.md item 3 -- same "pure notification straight into
+      // a record method" shape as the audio/visual callbacks just above.
+      onMasteryBurn: (tierId) => this.mastery.recordBurn(tierId),
+      onCascadeTriggered: () => this.mastery.recordCascadeTriggered(),
+      onRiskyIgnitionSurvived: () => this.mastery.recordRiskyIgnitionSurvived()
     });
 
     this.world = new WorldManager(this.matterSystem);
@@ -533,6 +544,12 @@ class FlameScene extends Phaser.Scene {
       this.worldStrength *= 1 + Phaser.Math.FloatBetween(min, max);
     }
     this.worldsCleared++;
+    // PROGRESSION_QUEUE.md item 3: a separate Mastery-domain counter from
+    // worldsCleared above -- that field drives ENDGAME's own escalation
+    // formula and isn't itself a Mastery concept, even though both
+    // increment at this same real-world moment (see MasteryTracker's
+    // worldsCleared comment).
+    this.mastery.recordWorldCleared();
 
     // Flame keeps its current level/size/evolution/heat/stability -- only
     // the world's fuel/matter resets and gets tougher.
@@ -704,8 +721,14 @@ class FlameScene extends Phaser.Scene {
       * (1 + this.skillTree.speedBonus());
     if(this.velocity.length() > maxSpeed) this.velocity.setLength(maxSpeed);
 
+    const prevX = this.flame.x;
+    const prevY = this.flame.y;
     this.flame.x = Phaser.Math.Clamp(this.flame.x + this.velocity.x * dtS, 10, WORLD.width - 10);
     this.flame.y = Phaser.Math.Clamp(this.flame.y + this.velocity.y * dtS, 10, WORLD.height - 10);
+    // PROGRESSION_QUEUE.md item 3: cumulative scalar distance, accumulated
+    // from the flame's own per-frame movement delta (post-clamp, so a frame
+    // that hits the world bounds only counts the distance actually moved).
+    this.mastery.addDistance(Phaser.Math.Distance.Between(prevX, prevY, this.flame.x, this.flame.y));
 
     this.heat = Math.max(0, this.heat - GROWTH.heatDecayPerSecond * dtS);
     // Continuous state, not a discrete event -- cheap AudioParam sets each
