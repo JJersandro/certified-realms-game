@@ -74,6 +74,12 @@ export class UIScene extends Phaser.Scene {
   subtitle!: Phaser.GameObjects.Text;
   stageLabel!: Phaser.GameObjects.Text;
   levelLabel!: Phaser.GameObjects.Text;
+  // PROGRESSION_QUEUE item 1 (Foundation domain framing): a third line under
+  // the existing stage/level pair, same top-right block, same font/color/
+  // placement logic -- purely a presentation reframe of the two values
+  // already shown above it as "Foundation" progress (the concept's own term
+  // for the XP/tier/level curve that already ships), no new state.
+  foundationLine!: Phaser.GameObjects.Text;
   tiltButton!: Phaser.GameObjects.Text;
   soundButton!: Phaser.GameObjects.Text;
   skillTreeButton!: Phaser.GameObjects.Text;
@@ -156,6 +162,13 @@ export class UIScene extends Phaser.Scene {
     this.levelLabel = this.add.text(this.scale.width - 24, 43, `LV ${toDisplayNumber(1)}`, {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(.5);
+
+    // Same x, same font/color, one more line at the same 21px pitch already
+    // used above it (title->subtitle and stage->level both step by 21px) --
+    // no new positioning scheme, just extending the existing one.
+    this.foundationLine = this.add.text(this.scale.width - 24, 64, `Foundation: SPARK · LV ${toDisplayNumber(1)}`, {
+      fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(10).setAlpha(.4);
 
     this.tiltButton = this.add.text(24, this.scale.height - 32, 'TILT: OFF', {
       fontFamily:'Inter, sans-serif', fontSize:'11px', color:'#ffb347'
@@ -243,6 +256,7 @@ export class UIScene extends Phaser.Scene {
   onLevelChanged = ({ level, stageName }: { level: number; stageName: string }) => {
     this.levelLabel.setText(`LV ${toDisplayNumber(level)}`);
     this.stageLabel.setText(stageName);
+    this.foundationLine.setText(`Foundation: ${stageName} · LV ${toDisplayNumber(level)}`);
   };
 
   onControlModeChanged = ({ label }: { label: string }) => {
@@ -350,6 +364,7 @@ export class UIScene extends Phaser.Scene {
   layout(){
     this.stageLabel.setPosition(this.scale.width - 24, 22);
     this.levelLabel.setPosition(this.scale.width - 24, 43);
+    this.foundationLine.setPosition(this.scale.width - 24, 64);
     this.tiltButton.setPosition(24, this.scale.height - 32);
     this.soundButton.setPosition(this.scale.width / 2, this.scale.height - 32);
     this.skillTreeButton.setPosition(this.scale.width - 24, this.scale.height - 32);

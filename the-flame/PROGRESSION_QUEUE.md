@@ -52,10 +52,26 @@ not flagged; only choices that change what the system *is* are.
 
 ## Queue
 
-- [ ] **1. Foundation summary HUD line.** Add a small, unobtrusive HUD readout (new line under
-      `UIScene`'s existing top-right stage/level block, or folded into it) showing the player's
-      current tier name + level, framed as "Foundation" progress rather than just a bare number
-      -- the smallest possible first step, pure presentation, no new state or currency.
+- [x] **1. Foundation summary HUD line.** Done 2026-09-14. Added `UIScene.foundationLine`, a
+      third line under the existing top-right stage/level block (`src/scenes/UIScene.ts`),
+      reading `Foundation: <TIER NAME> · LV <n>` (e.g. "Foundation: SPARK · LV 1") -- reframes
+      the two values already shown above it (stageLabel/levelLabel) as "Foundation" domain
+      progress. Pure presentation: no new state, currency, or event -- it's driven by the same
+      existing `ui:levelChanged` payload (`level`, `stageName`) the two lines above it already
+      consume, updated in the same `onLevelChanged` handler. Deliberately reused every existing
+      HUD convention rather than introducing anything new, per VISION.md's open
+      positioning/color question: same font (Inter, 11px), same color (`#ffb347`, matching
+      stageLabel/levelLabel), same right-aligned x, and the same 21px line pitch already used
+      twice in this HUD (title->subtitle, stage->level) -- so the new line sits at y=64,
+      one more step of that existing pitch, at a slightly dimmer alpha (.4, continuing the .65/
+      .5 fade of the two lines above it) than either. No new colors or positioning scheme
+      introduced. Verified: `npx tsc --noEmit`, `npx vite build`, `npm test` (24 tests, 3 files,
+      all pass, unchanged) all clean; plus a real headless run (Playwright/Chromium against a
+      `vite preview` build, phone viewport 390x844) confirming the line actually renders with
+      the right text/font/color/position and updates live when `ui:levelChanged` fires with a
+      new level/stage (screenshot-checked, no console errors) -- verified via a temporary
+      `window.__game` debug hook in `main.ts`, reverted immediately after (see git diff: only
+      `UIScene.ts` is changed).
 - [ ] **2. `PROGRESSION_DOMAINS` doc constant.** A single `src/data/progressionDomainsData.ts`
       file naming the 7 domains and one sentence each on what they mean *in this game*
       specifically (not the generic concept language) -- a single source of truth every later
