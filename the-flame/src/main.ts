@@ -715,10 +715,25 @@ class FlameScene extends Phaser.Scene {
       this.target.y - this.flame.y
     ).scale(5.2);
 
+    // Movement feedback slice: stability already degrades from erratic
+    // steering (see updateFlameVisual below) but never fed back into
+    // movement itself -- a fragile flame now steers noisily, not just
+    // cosmetically. Rotating desired (rather than velocity directly) keeps
+    // the error proportional to how far off-target the flame already is,
+    // instead of injecting a constant wobble regardless of intent.
+    if(this.stability < GROWTH.maxStability){
+      const errorAngle = Phaser.Math.FloatBetween(-1, 1)
+        * GROWTH.maxSteeringErrorRad * (1 - this.stability);
+      desired.rotate(errorAngle);
+    }
+
     this.velocity.lerp(desired, Math.min(1, dtS * 5.5));
 
+    // Heat -> speed: a hot flame is more eager to close distance, mirroring
+    // what heat already does to its glow/stretch (movement feedback slice).
     const maxSpeed = (90 + this.flameSize * 8) * capabilitiesForLevel(this.level).speedMultiplier
-      * (1 + this.skillTree.speedBonus());
+      * (1 + this.skillTree.speedBonus())
+      * (1 + this.heat * GROWTH.heatSpeedBonus);
     if(this.velocity.length() > maxSpeed) this.velocity.setLength(maxSpeed);
 
     const prevX = this.flame.x;
