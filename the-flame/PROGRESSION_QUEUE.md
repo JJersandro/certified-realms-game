@@ -72,10 +72,28 @@ not flagged; only choices that change what the system *is* are.
       new level/stage (screenshot-checked, no console errors) -- verified via a temporary
       `window.__game` debug hook in `main.ts`, reverted immediately after (see git diff: only
       `UIScene.ts` is changed).
-- [ ] **2. `PROGRESSION_DOMAINS` doc constant.** A single `src/data/progressionDomainsData.ts`
-      file naming the 7 domains and one sentence each on what they mean *in this game*
-      specifically (not the generic concept language) -- a single source of truth every later
-      item and every future agent run references. Data-only, no gameplay behavior change.
+- [x] **2. `PROGRESSION_DOMAINS` doc constant.** Done 2026-09-14. Added
+      `src/data/progressionDomainsData.ts` -- a `ProgressionDomain` type (`name`,
+      `description`) and a 7-entry `PROGRESSION_DOMAINS` array (Foundation, Burning Style,
+      Economy, Mastery, Ascension, Transcendence, 7-Core), each with one sentence of what it
+      means in this game specifically, no generic combat/enemy/boss language. Follows
+      `skillTreeData.ts`'s flat `{name, description}`-array shape (closest existing
+      precedent), not `scaleData.ts`'s nested-object shape, since this is itself the whole
+      export rather than a property of a larger config. No `id` field -- nothing references
+      entries individually yet, so array order alone carries the concept doc's own ordering.
+      Named "Burning Style" (not "Combat") from the start: item 2's own "not the generic
+      concept language" instruction directly rules out writing "Combat," and this file's own
+      "How the 7 domains map onto The Flame" section already treats Combat -> Burning Style as
+      settled framing (never marked `OPEN DECISION`), not something item 5 was meant to newly
+      decide -- item 5 below is corrected accordingly rather than left to go stale, per this
+      file's own "fix a later item's plan when an earlier implementation surfaces it no longer
+      makes sense" convention. Pure data, no imports elsewhere yet, no gameplay behavior
+      change. Verified: `npx tsc --noEmit`, `npx vite build`, `npm test` (24 tests, 3 files,
+      unchanged) all clean. No new test file: unlike `matterData.test.ts`/
+      `progressionData.test.ts`, there's no cross-row numeric/ordering invariant here to check
+      -- 7 independent name/sentence pairs. Manually confirmed via
+      `grep -inE "combat|enemy|enemies|boss|damage|loot"` that none of those terms appear in
+      the new file.
 - [ ] **3. Mastery counters (tracking only, no rewards yet).** Add a small, plain state object
       (parallel to how `SkillTreeManager` is a narrow, constructor-independent class) tracking:
       burns-per-tier (7 counters), total cascades triggered, total risky ignitions survived,
@@ -87,9 +105,14 @@ not flagged; only choices that change what the system *is* are.
       single easiest, most legible counter (likely burns-per-tier) and award a small, flat
       Mastery Point the first time a threshold is crossed (e.g. "50 kindling burns"). One
       counter, one threshold, one reward to start -- not all counters/thresholds at once.
-- [ ] **5. "Burning style" is the real name for the Combat domain -- rename before building
-      anything.** Update `PROGRESSION_DOMAINS` (item 2) once this is confirmed; purely a naming/
-      framing item, should land before items 6-9.
+- [ ] **5. Confirm "Burning Style" as the Combat domain's final name.** Corrected 2026-09-14 --
+      this is no longer a rename step. Item 2's own "not the generic concept language"
+      instruction ruled out shipping the literal word "Combat" even temporarily, and the
+      mapping was already settled (never marked `OPEN DECISION`) in this file's own domain-
+      mapping section, so `PROGRESSION_DOMAINS` was named "Burning Style" directly when item 2
+      was implemented. This item is now a confirmation checkpoint before items 6-9 build
+      against the name, not a rename operation: verify `PROGRESSION_DOMAINS` and every item
+      6-9 reference consistently say "Burning Style," then check off.
 - [ ] **6. Aggressive-play bonus ("Berserker" analog).** A small, capped bonus (to burn speed or
       heat generation, reusing existing `heat`/`GROWTH` levers) that scales with the flame's
       current velocity. OPEN DECISION: which existing stat it modifies, and the magnitude --
