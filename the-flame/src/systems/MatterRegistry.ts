@@ -41,6 +41,12 @@ export type FlameSnapshot = {
   // getFlame() rather than reaching for a new Host callback.
   cascadeChanceBonus: number;
   xpYieldMultiplier: number;
+  // Movement/spread feedback slice (owner build plan, 2026-09-14): 0-1
+  // current heat, same value already driving wobble/color/glow every frame
+  // in FlameScene -- threaded through here so tryCascade() can read it too,
+  // the same "arrives pre-computed via getFlame()" pattern as the two
+  // skill-tree bonuses above.
+  heat: number;
   // Phase 14: the colorblind-safe palette toggle lives on FlameScene --
   // same "arrives pre-computed via getFlame()" pattern as the skill-tree
   // bonuses above, so burnVisual/scorch colors (the two remaining
@@ -193,7 +199,11 @@ export class MatterRegistry {
     for(const other of this.fuels){
       if(other === source || !other.alive || other.burnState !== 'idle') continue;
       if(flame.level < other.tier.minLevelToIgnite) continue;
-      const cascadeChance = Math.min(1, source.tier.cascadeChance + flame.cascadeChanceBonus);
+      // Heat -> spread (movement/spread feedback slice): a flame running
+      // hot spreads fire more readily, on top of the tier's own base chance
+      // and the existing skill-tree bonus.
+      const cascadeChance = Math.min(1, source.tier.cascadeChance + flame.cascadeChanceBonus
+        + flame.heat * BURNING.heatCascadeBonus);
       if(Math.random() >= cascadeChance) continue;
 
       const dist = Phaser.Math.Distance.Between(source.x, source.y, other.x, other.y);

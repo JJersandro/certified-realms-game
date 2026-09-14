@@ -128,6 +128,7 @@ class FlameScene extends Phaser.Scene {
           * (1 + this.skillTree.contactRadiusBonus()),
         cascadeChanceBonus: this.skillTree.cascadeChanceBonus(),
         xpYieldMultiplier: 1 + this.skillTree.xpYieldBonus(),
+        heat: this.heat,
         palette: this.palette()
       }),
       addHeat: (amount) => {

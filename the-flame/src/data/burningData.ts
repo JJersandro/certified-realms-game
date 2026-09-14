@@ -21,5 +21,15 @@ export const BURNING = {
     alpha: 0.22,
     radiusMultiplier: 1.25,
     fadeMs: 9000
-  }
+  },
+  // Movement/spread feedback slice (owner build plan, 2026-09-14): a flame
+  // running hot spreads fire more readily -- max fractional bonus added to
+  // MatterRegistry.tryCascade()'s chance formula at heat===GROWTH.maxHeat,
+  // still capped at 1 there same as every other cascadeChance contributor.
+  // A real, if small, feedback loop: more cascading -> more heat (via
+  // addHeat on every ignite) -> more cascading -- but the existing
+  // RISK.overheatThreshold shrink already brakes runaway heat regardless of
+  // source, so this doesn't need its own separate cap beyond the shared one.
+  // Conservative starting constant, real balance pass later.
+  heatCascadeBonus: 0.15
 } as const;
