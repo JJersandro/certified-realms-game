@@ -127,10 +127,28 @@ not flagged; only choices that change what the system *is* are.
       ignition path; real pointer-driven movement across several frames incremented
       `distanceTraveled`; and a real `checkWorldConsumed()` call (after killing all fuel)
       incremented `worldsCleared`. Zero console/page errors throughout.
-- [ ] **4. Mastery Points + first threshold reward.** Once item 3's counters exist: pick the
-      single easiest, most legible counter (likely burns-per-tier) and award a small, flat
-      Mastery Point the first time a threshold is crossed (e.g. "50 kindling burns"). One
-      counter, one threshold, one reward to start -- not all counters/thresholds at once.
+- [x] **4. Mastery Points + first threshold reward.** Done 2026-09-15. Added
+      `src/data/masteryData.ts` (`MASTERY.kindlingBurnThreshold = 50`,
+      `MASTERY.kindlingBurnReward = 1`) and `MasteryTracker.masteryPoints`
+      (plain count, not a currency object -- spending it is items 10/11/12's
+      own later work). `recordBurn()` checks `burnsPerTier[0] ===
+      kindlingBurnThreshold` (kindling: lowest `minLevelToIgnite` of any
+      tier, so it's the most legible early milestone) right after
+      incrementing -- equality, not `>=`, so it fires exactly once the
+      instant the threshold is crossed ("the first time," not "every N"),
+      with no separate already-awarded flag needed. One counter, one
+      threshold, one reward, per this item's own scope -- items 10/11/12
+      untouched. No UI: matches item 3's own "no UI yet" precedent, and
+      keeps clear of the HUD positioning/color work VISION.md says is still
+      waiting on the project owner's screenshot feedback.
+      Verified: `tsc --noEmit`, `vite build`, `npm run lint`, and the Vitest
+      suite (40 tests, 4 files -- 3 new, covering exactly-once-at-threshold,
+      no double-award past it, and no cross-tier false-positive) all clean.
+      Plus a real headless Playwright pass driving the actual production
+      path (`MatterRegistry.finishBurn()` -> `MatterHost.onMasteryBurn` ->
+      `recordBurn()`, not `recordBurn()` called directly): 0 points at 49
+      burns, exactly 1 at the 50th, still 1 at the 51st. Zero console
+      errors.
 - [ ] **5. Confirm "Burning Style" as the Combat domain's final name.** Corrected 2026-09-14 --
       this is no longer a rename step. Item 2's own "not the generic concept language"
       instruction ruled out shipping the literal word "Combat" even temporarily, and the

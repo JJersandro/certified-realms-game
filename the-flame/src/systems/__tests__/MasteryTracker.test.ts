@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { MasteryTracker } from '../MasteryTracker';
 import { MATTER } from '../../data/matterData';
+import { MASTERY } from '../../data/masteryData';
 
 describe('MasteryTracker initial state', () => {
   it('starts every counter at zero, with one burnsPerTier slot per MATTER tier', () => {
@@ -11,6 +12,32 @@ describe('MasteryTracker initial state', () => {
     expect(mastery.riskyIgnitionsSurvived).toBe(0);
     expect(mastery.worldsCleared).toBe(0);
     expect(mastery.distanceTraveled).toBe(0);
+    expect(mastery.masteryPoints).toBe(0);
+  });
+});
+
+describe('MasteryTracker.recordBurn -- item 4 Mastery Points threshold', () => {
+  it('awards exactly one Mastery Point the instant kindling burns cross the threshold', () => {
+    const mastery = new MasteryTracker();
+    for(let i = 0; i < MASTERY.kindlingBurnThreshold - 1; i++) mastery.recordBurn(MATTER[0].id);
+    expect(mastery.masteryPoints).toBe(0); // one burn short -- not awarded yet
+
+    mastery.recordBurn(MATTER[0].id); // the threshold-crossing burn
+    expect(mastery.burnsPerTier[0]).toBe(MASTERY.kindlingBurnThreshold);
+    expect(mastery.masteryPoints).toBe(MASTERY.kindlingBurnReward);
+  });
+
+  it('does not award again on further kindling burns past the threshold', () => {
+    const mastery = new MasteryTracker();
+    for(let i = 0; i < MASTERY.kindlingBurnThreshold + 20; i++) mastery.recordBurn(MATTER[0].id);
+    expect(mastery.masteryPoints).toBe(MASTERY.kindlingBurnReward);
+  });
+
+  it('does not award for the same total count reached on a different tier', () => {
+    const mastery = new MasteryTracker();
+    for(let i = 0; i < MASTERY.kindlingBurnThreshold; i++) mastery.recordBurn(MATTER[1].id);
+    expect(mastery.burnsPerTier[1]).toBe(MASTERY.kindlingBurnThreshold);
+    expect(mastery.masteryPoints).toBe(0);
   });
 });
 

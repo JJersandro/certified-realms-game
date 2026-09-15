@@ -1,4 +1,5 @@
 import { MATTER } from '../data/matterData';
+import { MASTERY } from '../data/masteryData';
 
 // PROGRESSION_QUEUE.md item 3: Mastery domain counters -- tracking-only for
 // now, no thresholds/rewards/UI yet (those are items 4/10/11). Narrow,
@@ -50,6 +51,11 @@ export class MasteryTracker {
   // "distance traveled" rather than "distance from start."
   distanceTraveled = 0;
 
+  // PROGRESSION_QUEUE.md item 4: first Mastery Point earn condition. Plain
+  // count, not a currency object -- items 10/11/12 (spending it) are their
+  // own separate, later, one-at-a-time items.
+  masteryPoints = 0;
+
   // tierId is MatterTier.id (1..MATTER.length), matching a burned fuel's
   // own fuel.tier.id -- guarded so an out-of-range id (shouldn't happen,
   // but this is the one place a bad id could silently grow/misindex the
@@ -59,6 +65,15 @@ export class MasteryTracker {
     const index = tierId - 1;
     if(index < 0 || index >= this.burnsPerTier.length) return;
     this.burnsPerTier[index]++;
+
+    // Item 4's own "the first time a threshold is crossed" wording, not
+    // "every N burns" -- burnsPerTier only ever increments by exactly 1
+    // here, so checking equality (not >=) fires exactly once, the instant
+    // the threshold is crossed, with no separate "already awarded" flag
+    // needed.
+    if(index === 0 && this.burnsPerTier[0] === MASTERY.kindlingBurnThreshold){
+      this.masteryPoints += MASTERY.kindlingBurnReward;
+    }
   }
 
   recordCascadeTriggered(){
