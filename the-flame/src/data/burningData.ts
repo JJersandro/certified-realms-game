@@ -31,5 +31,11 @@ export const BURNING = {
   // RISK.overheatThreshold shrink already brakes runaway heat regardless of
   // source, so this doesn't need its own separate cap beyond the shared one.
   // Conservative starting constant, real balance pass later.
-  heatCascadeBonus: 0.15
+  heatCascadeBonus: 0.15,
+  // Stage 1 follow-up to the same slice: a fragile flame burns fuel less
+  // efficiently -- max fractional slowdown to updateFuel()'s hp-drain rate
+  // at stability===GROWTH.minStability (0.25), i.e. (1-0.25)=0.75 of this
+  // value in practice. Conservative starting constant, real balance pass
+  // later, same reasoning as heatCascadeBonus above.
+  instabilityDrainPenalty: 0.15
 } as const;

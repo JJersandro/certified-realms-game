@@ -47,6 +47,10 @@ export type FlameSnapshot = {
   // the same "arrives pre-computed via getFlame()" pattern as the two
   // skill-tree bonuses above.
   heat: number;
+  // Stage 1 follow-up to the same slice: 0-1 current stability (already
+  // driving wobble/steering elsewhere in FlameScene) -- threaded through
+  // here so updateFuel()'s burn-drain rate can read it too.
+  stability: number;
   // Phase 14: the colorblind-safe palette toggle lives on FlameScene --
   // same "arrives pre-computed via getFlame()" pattern as the skill-tree
   // bonuses above, so burnVisual/scorch colors (the two remaining
@@ -311,7 +315,12 @@ export class MatterRegistry {
       return;
     }
 
-    fuel.hp -= fuel.tier.drainPerMs * dt;
+    // Stability -> burn efficiency (movement/spread feedback slice, stage 1
+    // follow-up): a fragile flame burns less efficiently -- small, capped
+    // penalty at low stability, mirroring heat's own capped bonus to
+    // cascade chance just above.
+    const stabilityDrainFactor = 1 - (1 - flame.stability) * BURNING.instabilityDrainPenalty;
+    fuel.hp -= fuel.tier.drainPerMs * dt * stabilityDrainFactor;
     const pulse = 1 + Math.sin(t * BURNING.burnPulse.frequency + fuel.pulse) * BURNING.burnPulse.scale;
     const progress = Phaser.Math.Clamp(1 - fuel.hp / fuel.maxHp, 0, 1);
 
