@@ -130,6 +130,14 @@ class FlameScene extends Phaser.Scene {
         xpYieldMultiplier: 1 + this.skillTree.xpYieldBonus(),
         heat: this.heat,
         stability: this.stability,
+        // Camera-distance culling (BACKLOG.md [mobile-perf]: "a real,
+        // concrete lever if instance counts grow further" -- flagged, not
+        // yet implemented). The camera always follows the flame
+        // (startFollow above), so distance-from-flame is exactly
+        // distance-from-camera-center here -- no separate camera-geometry
+        // check needed. Computed fresh every frame (not cached) since the
+        // viewport itself resizes (Phaser.Scale.RESIZE).
+        cullRadius: Math.hypot(this.cameras.main.worldView.width, this.cameras.main.worldView.height) / 2 + 200,
         palette: this.palette()
       }),
       addHeat: (amount) => {

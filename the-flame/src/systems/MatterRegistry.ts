@@ -51,6 +51,15 @@ export type FlameSnapshot = {
   // driving wobble/steering elsewhere in FlameScene) -- threaded through
   // here so updateFuel()'s burn-drain rate can read it too.
   stability: number;
+  // Camera-distance culling (BACKLOG.md [mobile-perf] lever): idle fuel
+  // beyond this world-space distance from the flame is guaranteed to be
+  // both off-screen (camera always follows the flame) and out of contact
+  // range (contact radius is at most a few dozen px, far smaller than a
+  // viewport radius) -- updateFuel() skips its per-frame idle-pulse visual
+  // writes for anything beyond it. Never applied to actively burning fuel,
+  // whose hp-drain/finishBurn must keep running regardless of camera
+  // position -- only the purely cosmetic idle "breathing" state is culled.
+  cullRadius: number;
   // Phase 14: the colorblind-safe palette toggle lives on FlameScene --
   // same "arrives pre-computed via getFlame()" pattern as the skill-tree
   // bonuses above, so burnVisual/scorch colors (the two remaining
@@ -266,10 +275,20 @@ export class MatterRegistry {
     if(!fuel.alive) return;
 
     if(fuel.burnState === 'idle'){
-      const ignitable = flame.level >= fuel.tier.minLevelToIgnite;
+      const distToFlame = Phaser.Math.Distance.Between(flame.x, flame.y, fuel.x, fuel.y);
 
-      const inContact = Phaser.Math.Distance.Between(flame.x, flame.y, fuel.x, fuel.y)
-        < (flame.size + fuel.r) * BURNING.contactRadiusMultiplier * flame.contactRadiusMultiplier;
+      // Camera-distance culling: this far away, contact is geometrically
+      // impossible (cullRadius is always far larger than any reachable
+      // contact radius) and the fuel is off-screen -- skip the idle-pulse
+      // visual writes below entirely rather than computing them for
+      // something nobody can see.
+      if(distToFlame > flame.cullRadius){
+        fuel.forceProgress = 0;
+        return;
+      }
+
+      const ignitable = flame.level >= fuel.tier.minLevelToIgnite;
+      const inContact = distToFlame < (flame.size + fuel.r) * BURNING.contactRadiusMultiplier * flame.contactRadiusMultiplier;
 
       if(inContact && ignitable){
         fuel.forceProgress = 0;
