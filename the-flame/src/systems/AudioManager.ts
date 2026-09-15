@@ -170,6 +170,15 @@ export class AudioManager {
     });
   }
 
+  playTierDown(){
+    const cfg = AUDIO.tierDown;
+    const now = this.context.currentTime;
+    cfg.notes.forEach((freq, i) => {
+      const startTime = now + i * (cfg.noteDurationSeconds + cfg.gapSeconds);
+      this.playTone(freq, cfg.type, cfg.volume, startTime, cfg.noteDurationSeconds);
+    });
+  }
+
   playWorldClear(){
     const cfg = AUDIO.worldClear;
     const now = this.context.currentTime;

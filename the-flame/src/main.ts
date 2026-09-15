@@ -462,6 +462,54 @@ class FlameScene extends Phaser.Scene {
     this.particles.explode(10);
   }
 
+  // Loose end from the mobile-perf/visual audit pass: tier-down (the risk
+  // system's overheat/fragile shrink demoting a level enough to cross back
+  // below a tier boundary) had zero discrete reaction -- audioData.ts's own
+  // comment on levelUp used to note this explicitly ("no matching sound on
+  // tryLevelDown()"). Tier-up already telegraphs its own approach
+  // continuously (heat/stability already drive wobble/color/particles as
+  // they climb toward the risk thresholds), so this only needed the same
+  // "the moment itself" treatment tier-up already has -- distinct in
+  // direction, not just a copy: a shrink (not grow) pop, a glow dip (not
+  // spike), and a *contracting* ring (starts wide, closes to nothing) in
+  // the *old* tier's dim/calm color (form.calm, a fading-out cue) rather
+  // than tier-up's expanding ring in the new tier's hot base color (a
+  // preview-of-what's-next cue) -- the two should never read as the same
+  // event played in reverse.
+  playTierDownFlourish(){
+    const motionScale = this.reducedMotion ? ACCESSIBILITY.reducedMotionScale : 1;
+    const shrink = 1 - 0.22 * motionScale;
+    for(const target of [this.flame, this.core]){
+      this.tweens.add({
+        targets: target,
+        scale: shrink,
+        duration: 200,
+        yoyo: true,
+        ease: 'Quad.In'
+      });
+    }
+    if(this.flameGlow){
+      const baseOuter = this.flameGlow.outerStrength;
+      const dip = Math.max(0, baseOuter - 4 * motionScale);
+      this.flameGlow.outerStrength = dip;
+      this.time.delayedCall(380, () => { if(this.flameGlow) this.flameGlow.outerStrength = baseOuter; });
+    }
+
+    const form = formForLevel(this.level, this.palette());
+    const ring = this.add.circle(this.flame.x, this.flame.y, this.flameSize * (1.6 + 1.2 * motionScale), form.calm, 0.4)
+      .setDepth(8)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring,
+      radius: this.flameSize * 0.2,
+      alpha: 0,
+      duration: 460,
+      ease: 'Cubic.In',
+      onUpdate: () => ring.setPosition(this.flame.x, this.flame.y),
+      onComplete: () => ring.destroy()
+    });
+  }
+
   // flame-visual-designer finding (2026-09-13, BACKLOG.md [visual]): the
   // "one particle burst + one audio ping" shape level-up/tier-up used to
   // have and no longer do (see playLevelUpFlourish/playTierUpFlourish above)
@@ -513,7 +561,16 @@ class FlameScene extends Phaser.Scene {
     while(this.level > 1 && this.flameSize < PROGRESSION.minFlameSizeForLevel(this.level)){
       this.level--;
     }
-    if(this.level !== before) this.emitLevelChanged();
+    if(this.level !== before){
+      this.emitLevelChanged();
+      // Mirrors tryLevelUp()'s own tier-crossing check above -- only a
+      // tier-boundary crossing gets the discrete reaction, not every
+      // ordinary demotion (same "only the rarer, bigger event" reasoning).
+      if(PROGRESSION.tierForLevel(this.level) < PROGRESSION.tierForLevel(before)){
+        this.audio.playTierDown();
+        this.playTierDownFlourish();
+      }
+    }
   }
 
   // Phase 11: event-driven (called from onFuelBurned, same pattern as

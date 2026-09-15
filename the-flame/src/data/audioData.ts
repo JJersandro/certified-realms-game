@@ -41,14 +41,27 @@ export const AUDIO = {
     filterQ: 1.1
   },
 
-  // 3. Level-up chime -- short ascending arpeggio, only on tryLevelUp()'s
-  // actual level increase (no matching sound on tryLevelDown()).
+  // 3. Level-up chime -- short ascending arpeggio, on tryLevelUp()'s actual
+  // level increase. See tierDown below for the tier-down descent.
   levelUp: {
     volume: 0.15,
     type: 'sine' as OscillatorType,
     notes: [523.25, 659.25, 783.99], // C5, E5, G5
     noteDurationSeconds: 0.11,
     gapSeconds: 0.03
+  },
+
+  // 3b. Tier-down descent -- a short descending arpeggio (levelUp's mirror
+  // image), only on tryLevelDown() actually crossing a *tier* boundary, not
+  // every ordinary level-down. Distinct minor-feeling interval spacing
+  // (not just levelUp's notes in reverse) so it reads as "lost ground,"
+  // not "level-up played backwards."
+  tierDown: {
+    volume: 0.15,
+    type: 'sine' as OscillatorType,
+    notes: [659.25, 523.25, 392.0], // E5, C5, G4
+    noteDurationSeconds: 0.13,
+    gapSeconds: 0.035
   },
 
   // 4. World-clear fanfare -- a longer, distinct descending-then-rising
