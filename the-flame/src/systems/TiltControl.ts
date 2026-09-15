@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import Phaser from 'phaser/dist/phaser-arcade-physics.js';
 
 export type TiltVector = { x: number; y: number };
 

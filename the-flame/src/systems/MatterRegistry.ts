@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import Phaser from 'phaser/dist/phaser-arcade-physics.js';
 import { FlamePalette } from '../data/flameVisualData';
 import { BURNING } from '../data/burningData';
 import { GROWTH } from '../data/growthData';

@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import Phaser from 'phaser/dist/phaser-arcade-physics.js';
 import { toDisplayNumber } from '../util/displayNumber';
 import { SKILL_TREE } from '../data/skillTreeData';
 

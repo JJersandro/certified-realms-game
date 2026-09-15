@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import Phaser from 'phaser/dist/phaser-arcade-physics.js';
 import { FLAME_VISUAL } from '../data/flameVisualData';
 
 // Phase 15: minimal title/start screen, first in the game config's scene
