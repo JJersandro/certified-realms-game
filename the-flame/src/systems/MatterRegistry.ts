@@ -328,7 +328,17 @@ export class MatterRegistry {
       // not in contact -- reset any partial charge and rest at the
       // normal idle look (dimmer while gated, to signal "not ready yet").
       fuel.forceProgress = 0;
-      fuel.visual.setScale(1 + Math.sin(t * 0.003 + fuel.pulse) * 0.06);
+      // Proximity unease: a subtle extra trembling as the flame approaches,
+      // on top of the existing idle-breathing sine -- distToFlame is
+      // already computed above for the cull/contact checks, reused here
+      // rather than a third distance call. A faster frequency and a
+      // different fuel.pulse multiplier than the breathing sine so it
+      // reads as a distinct, more urgent motion, not just a bigger wobble.
+      const proximity = Phaser.Math.Clamp(1 - distToFlame / BURNING.awareness.radius, 0, 1);
+      const unease = proximity > 0
+        ? Math.sin(t * BURNING.awareness.jitterRate + fuel.pulse * 7) * BURNING.awareness.jitterAmplitude * proximity
+        : 0;
+      fuel.visual.setScale(1 + Math.sin(t * 0.003 + fuel.pulse) * 0.06 + unease);
       fuel.visual.setAlpha(ignitable ? 0.78 : 0.4);
       fuel.burnVisual.setAlpha(0);
       return;

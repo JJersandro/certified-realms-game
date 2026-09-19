@@ -37,5 +37,18 @@ export const BURNING = {
   // at stability===GROWTH.minStability (0.25), i.e. (1-0.25)=0.75 of this
   // value in practice. Conservative starting constant, real balance pass
   // later, same reasoning as heatCascadeBonus above.
-  instabilityDrainPenalty: 0.15
+  instabilityDrainPenalty: 0.15,
+
+  // Independent design review, TOUCH section: idle matter not yet in
+  // contact trembles slightly as the flame approaches -- purely cosmetic,
+  // layered onto the existing idle-breathing sine, no gameplay effect
+  // (contact/ignition logic is unchanged). Gives "the world feels aware of
+  // you" for the cost of one extra sine term. radius is comfortably inside
+  // any real cullRadius (viewport diagonal/2 + 200) so awareness never
+  // triggers on fuel that's already been culled as off-screen.
+  awareness: {
+    radius: 220,
+    jitterAmplitude: 0.05,
+    jitterRate: 0.02
+  }
 } as const;
