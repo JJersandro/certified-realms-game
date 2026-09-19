@@ -23,6 +23,15 @@ export class AudioManager {
   private ambientFilter: BiquadFilterNode;
   private ambientGain: GainNode;
 
+  // Instability flutter: same "create once, start once, touch only
+  // AudioParams per frame" shape as the ambient drone above, but a looped
+  // noise source through a bandpass filter instead of a tonal oscillator --
+  // a deliberately different timbre so danger doesn't just sound like a
+  // louder heat drone.
+  private instabilityNoise: AudioBufferSourceNode;
+  private instabilityFilter: BiquadFilterNode;
+  private instabilityGain: GainNode;
+
   constructor(){
     this.context = new AudioContext();
 
@@ -47,6 +56,26 @@ export class AudioManager {
     this.ambientFilter.connect(this.ambientGain);
     this.ambientGain.connect(this.masterGain);
     this.ambientOscillator.start();
+
+    // AudioBufferSourceNode can only ever be started once, so looping the
+    // existing noise buffer here (rather than creating fresh short bursts
+    // like playEmberCrackle does) is what makes this a continuous layer.
+    this.instabilityNoise = this.context.createBufferSource();
+    this.instabilityNoise.buffer = this.noiseBuffer;
+    this.instabilityNoise.loop = true;
+
+    this.instabilityFilter = this.context.createBiquadFilter();
+    this.instabilityFilter.type = AUDIO.instability.filterType;
+    this.instabilityFilter.frequency.value = AUDIO.instability.filterFrequency;
+    this.instabilityFilter.Q.value = AUDIO.instability.filterQ;
+
+    this.instabilityGain = this.context.createGain();
+    this.instabilityGain.gain.value = 0; // silent at full stability
+
+    this.instabilityNoise.connect(this.instabilityFilter);
+    this.instabilityFilter.connect(this.instabilityGain);
+    this.instabilityGain.connect(this.masterGain);
+    this.instabilityNoise.start();
 
     // Mobile/battery: a backgrounded tab has no reason to keep an inaudible
     // drone (or any oscillator/filter graph) actively processing. Web Audio
@@ -205,5 +234,21 @@ export class AudioManager {
     this.ambientFilter.frequency.value = cfg.baseFilterCutoff + (cfg.maxFilterCutoff - cfg.baseFilterCutoff) * clamped;
     this.ambientOscillator.frequency.value = cfg.baseFrequency + (cfg.maxFrequency - cfg.baseFrequency) * clamped;
     this.ambientGain.gain.value = cfg.baseVolume + (cfg.maxVolume - cfg.baseVolume) * clamped;
+  }
+
+  // Continuous state, same reasoning/pattern as setAmbientIntensity above,
+  // called from the same per-frame FlameScene.update() spot right after it.
+  // t is the scene's own elapsed-time clock (same one updateFlameVisual's
+  // Math.sin(t * rate) wobble/sway terms already use), not wall-clock time,
+  // so the flutter stays perfectly in step with everything else driven by
+  // that clock (including under reducedMotion, which slows nothing here --
+  // this is audio, not motion amplitude, so ACCESSIBILITY.reducedMotionScale
+  // doesn't apply the way it does to visual terms).
+  setInstabilityIntensity(stability: number, t: number){
+    const cfg = AUDIO.instability;
+    const instability = 1 - Math.max(0, Math.min(1, stability));
+    const flutterRate = cfg.baseFlutterRate + (cfg.maxFlutterRate - cfg.baseFlutterRate) * instability;
+    const flutter = 0.5 + 0.5 * Math.sin(t * flutterRate);
+    this.instabilityGain.gain.value = instability * cfg.maxVolume * flutter;
   }
 }

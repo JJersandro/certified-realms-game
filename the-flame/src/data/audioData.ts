@@ -97,5 +97,25 @@ export const AUDIO = {
     maxFilterCutoff: 1200,
     baseVolume: 0.015,
     maxVolume: 0.075
+  },
+
+  // 7. Instability flutter -- a second continuous layer, distinct in
+  // timbre from the heat drone above (filtered noise, not a tonal
+  // oscillator) so danger has its own voice instead of just a louder/
+  // higher-pitched version of heat's. Silent at full stability; as
+  // stability drops, both loudness and flutter speed increase, set every
+  // frame from FlameScene.update() the same way heat's ambient layer is.
+  // Reuses the existing ember-crackle noise buffer (looped) rather than
+  // allocating a second one.
+  instability: {
+    filterType: 'bandpass' as BiquadFilterType,
+    filterFrequency: 900,
+    filterQ: 2,
+    // Sine-rate constants in the same raw-multiplier style as every other
+    // per-frame Math.sin(t * rate) term in main.ts's updateFlameVisual --
+    // not literal Hz.
+    baseFlutterRate: 0.006,
+    maxFlutterRate: 0.02,
+    maxVolume: 0.045
   }
 } as const;

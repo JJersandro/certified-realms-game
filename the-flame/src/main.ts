@@ -817,6 +817,10 @@ class FlameScene extends Phaser.Scene {
     // frame, same reasoning that already justifies every other per-frame
     // heat-driven visual update (see updateFlameVisual below).
     this.audio.setAmbientIntensity(this.heat);
+    // Instability gets its own continuous voice, same reasoning -- t is
+    // this scene's own elapsed-time clock, matching every other
+    // Math.sin(t * rate) term already driven by it.
+    this.audio.setInstabilityIntensity(this.stability, t);
 
     const fragileThreshold = RISK.fragileThreshold - this.skillTree.stabilityFloorBonus();
     if(this.heat >= RISK.overheatThreshold || this.stability <= fragileThreshold){
