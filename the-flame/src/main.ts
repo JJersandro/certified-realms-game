@@ -812,6 +812,11 @@ class FlameScene extends Phaser.Scene {
     // that hits the world bounds only counts the distance actually moved).
     this.mastery.addDistance(Phaser.Math.Distance.Between(prevX, prevY, this.flame.x, this.flame.y));
 
+    // Item 6 (Berserker analog): sustained fast movement generates heat on
+    // its own, not just active burning. velocity is already clamped to
+    // maxSpeed above, so speedRatio is naturally in [0,1].
+    const speedRatio = this.velocity.length() / maxSpeed;
+    this.heat = Math.min(GROWTH.maxHeat, this.heat + speedRatio * GROWTH.aggressiveHeatGainPerSecond * dtS);
     this.heat = Math.max(0, this.heat - GROWTH.heatDecayPerSecond * dtS);
     // Continuous state, not a discrete event -- cheap AudioParam sets each
     // frame, same reasoning that already justifies every other per-frame

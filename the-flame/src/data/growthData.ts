@@ -26,5 +26,16 @@ export const GROWTH = {
   // stability (minStability above, i.e. (1-minStability)=0.75 of this
   // value) -- a fragile flame is measurably harder to aim, not just
   // uglier. ~0.3 rad =~17 degrees at full effect.
-  maxSteeringErrorRad: 0.3
+  maxSteeringErrorRad: 0.3,
+
+  // PROGRESSION_QUEUE.md item 6 ("Berserker" analog): sustained fast
+  // movement generates heat on its own, not just active burning -- a real
+  // "play aggressively, run hot" loop, since heat already raises cascade
+  // spread and movement speed (this same feedback slice) while also
+  // risking the overheat shrink. Deliberately picked just above
+  // heatDecayPerSecond (0.16) so sustained top-speed movement can only
+  // just barely out-pace natural decay -- heat builds slowly from
+  // aggression alone, it isn't an instant max-heat button. Conservative
+  // starting constant, real balance pass later.
+  aggressiveHeatGainPerSecond: 0.18
 } as const;

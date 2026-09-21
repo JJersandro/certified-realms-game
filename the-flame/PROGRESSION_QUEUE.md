@@ -161,17 +161,29 @@ not flagged; only choices that change what the system *is* are.
       generic term verbatim, and this file's own item 2/5 explanatory prose) returned zero
       hits. Pure verification, no code changes -- this was a confirmation checkpoint, not a
       rename operation, per the correction logged above.
-- [ ] **6. Aggressive-play bonus ("Berserker" analog).** A small, capped bonus (to burn speed or
-      heat generation, reusing existing `heat`/`GROWTH` levers) that scales with the flame's
-      current velocity. OPEN DECISION: which existing stat it modifies, and the magnitude --
-      implement the mechanism first with a conservative constant, real balance pass later.
-      Note (2026-09-14): a separate, smaller heat/stability -> movement feedback slice (see
-      project owner's own build plan, outside this queue) approaches the same
-      `FlameScene.update()`/`heat` neighborhood from the opposite direction (state -> velocity,
-      vs. this item's velocity -> state). That slice should land first so this item builds on a
-      heat/stability-aware movement system rather than two independent, mutually-unaware edits
-      to the same formulas -- not a reason to reorder this item ahead of items 4/5, just a
-      heads-up for whoever picks this item up.
+- [x] **6. Aggressive-play bonus ("Berserker" analog).** Done 2026-09-21. OPEN DECISION resolved
+      by the project owner: **heat generation**, not burn speed. Sustained fast movement now
+      generates heat on its own, independent of active burning -- added
+      `GROWTH.aggressiveHeatGainPerSecond = 0.18` (`src/data/growthData.ts`) and, in
+      `FlameScene.update()` (`src/main.ts`), `speedRatio = velocity.length() / maxSpeed` (already
+      in [0,1] since velocity is clamped to `maxSpeed` earlier in the same method) scales the
+      gain, applied before the existing `heatDecayPerSecond` drain runs. Picked deliberately just
+      above `heatDecayPerSecond` (0.16) so sustained top-speed movement only barely outpaces
+      natural decay -- net +0.02/s at full speed, not an instant max-heat button -- and a real
+      loop results: aggression -> heat -> faster movement + more cascade spread (existing
+      `heatSpeedBonus`/`heatCascadeBonus` levers) -> more heat, still braked by the existing
+      `RISK.overheatThreshold` shrink regardless of source. Landed after the heat/stability ->
+      movement feedback slice (state -> velocity) per this item's own note below, so it builds on
+      that system rather than two mutually-unaware edits to the same formulas.
+      Verified: `tsc --noEmit`, `npm run lint`, `vite build` (1,140.19 kB / gzip 309.89 kB,
+      unchanged -- no new deps), and the Vitest suite (40/40, unchanged) all clean. Plus a real
+      headless Playwright pass via a temporary `window.__game` debug hook (fully reverted before
+      committing, confirmed via `grep -n "__game"` returning no matches): idle/stationary flame
+      held heat at exactly 0 across 300 frames; sustained organic max-speed movement (a moving
+      target re-set every frame, not a teleport) produced strictly monotonic heat gain sampled at
+      `[0.00032, 0.01632, 0.03232, 0.04832, 0.06432, 0.08032]` over 300 more frames, reaching
+      `0.096` after ~4.8s -- matching the predicted net rate exactly (`0.096 / 4.8 ≈ 0.02 =
+      0.18 - 0.16`). Heat stayed within `[0, GROWTH.maxHeat]` throughout, zero console errors.
 - [ ] **7. Tier-specific bonus choice ("Hunter" analog).** Let the player designate one matter
       tier as a focus (small new state, not a currency) for a bonus (XP yield or contact radius
       against that tier). OPEN DECISION: how the focus is chosen in-game (automatic? a UI
