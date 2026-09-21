@@ -149,14 +149,18 @@ not flagged; only choices that change what the system *is* are.
       `recordBurn()`, not `recordBurn()` called directly): 0 points at 49
       burns, exactly 1 at the 50th, still 1 at the 51st. Zero console
       errors.
-- [ ] **5. Confirm "Burning Style" as the Combat domain's final name.** Corrected 2026-09-14 --
-      this is no longer a rename step. Item 2's own "not the generic concept language"
-      instruction ruled out shipping the literal word "Combat" even temporarily, and the
-      mapping was already settled (never marked `OPEN DECISION`) in this file's own domain-
-      mapping section, so `PROGRESSION_DOMAINS` was named "Burning Style" directly when item 2
-      was implemented. This item is now a confirmation checkpoint before items 6-9 build
-      against the name, not a rename operation: verify `PROGRESSION_DOMAINS` and every item
-      6-9 reference consistently say "Burning Style," then check off.
+- [x] **5. Confirm "Burning Style" as the Combat domain's final name.** Done 2026-09-21.
+      Verified both halves of this checkpoint directly rather than assuming them: (1)
+      `src/data/progressionDomainsData.ts`'s `PROGRESSION_DOMAINS` entry uses `name: 'Burning
+      Style'` -- the only other "Combat" occurrences in the file are the explanatory-comment
+      lines correctly citing it as the deprecated generic term item 2 chose not to ship, not a
+      stray naming leak. (2) Items 6-9's titles and bodies (Berserker/Hunter/Critical/Swarm
+      analogs) all frame themselves under "Burning Style" consistently; none reference
+      "Combat." A repo-wide grep for "Combat" across `the-flame/**/*.ts` and `*.md` (excluding
+      `PROGRESSION_CONCEPT.md`, the source concept doc that's supposed to keep the original
+      generic term verbatim, and this file's own item 2/5 explanatory prose) returned zero
+      hits. Pure verification, no code changes -- this was a confirmation checkpoint, not a
+      rename operation, per the correction logged above.
 - [ ] **6. Aggressive-play bonus ("Berserker" analog).** A small, capped bonus (to burn speed or
       heat generation, reusing existing `heat`/`GROWTH` levers) that scales with the flame's
       current velocity. OPEN DECISION: which existing stat it modifies, and the magnitude --
