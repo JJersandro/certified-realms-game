@@ -43,11 +43,26 @@ export const BURNING = {
   // contact trembles slightly as the flame approaches -- purely cosmetic,
   // layered onto the existing idle-breathing sine, no gameplay effect
   // (contact/ignition logic is unchanged). Gives "the world feels aware of
-  // you" for the cost of one extra sine term. radius is comfortably inside
-  // any real cullRadius (viewport diagonal/2 + 200) so awareness never
-  // triggers on fuel that's already been culled as off-screen.
+  // you" for the cost of one extra sine term.
+  //
+  // margin is added on top of the *actual* contact radius computed at the
+  // call site (updateFuel), not an absolute distance -- code review caught
+  // that an earlier absolute-radius version collapsed to a near-zero
+  // trembling window at max flame size/tier/skill bonuses, where the real
+  // contact radius (up to ~215px) approached the old fixed 220 nearly
+  // exactly, silently killing the effect precisely where it should be most
+  // visible. A fixed margin keeps the window's width constant regardless of
+  // how large contact radius itself grows.
+  //
+  // The reason awareness never fires on fuel that's already been culled as
+  // off-screen isn't a radius-size relationship at all -- it's that
+  // updateFuel() unconditionally returns before this code runs whenever
+  // distToFlame > cullRadius. contactRadius + margin does stay well inside
+  // cullRadius (viewport diagonal/2 + 200px) for any real device viewport,
+  // but that's a consequence of the cull guard already existing, not what
+  // provides it.
   awareness: {
-    radius: 220,
+    margin: 150,
     jitterAmplitude: 0.05,
     jitterRate: 0.02
   }

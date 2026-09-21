@@ -288,7 +288,8 @@ export class MatterRegistry {
       }
 
       const ignitable = flame.level >= fuel.tier.minLevelToIgnite;
-      const inContact = distToFlame < (flame.size + fuel.r) * BURNING.contactRadiusMultiplier * flame.contactRadiusMultiplier;
+      const contactRadius = (flame.size + fuel.r) * BURNING.contactRadiusMultiplier * flame.contactRadiusMultiplier;
+      const inContact = distToFlame < contactRadius;
 
       if(inContact && ignitable){
         fuel.forceProgress = 0;
@@ -329,16 +330,28 @@ export class MatterRegistry {
       // normal idle look (dimmer while gated, to signal "not ready yet").
       fuel.forceProgress = 0;
       // Proximity unease: a subtle extra trembling as the flame approaches,
-      // on top of the existing idle-breathing sine -- distToFlame is
-      // already computed above for the cull/contact checks, reused here
-      // rather than a third distance call. A faster frequency and a
-      // different fuel.pulse multiplier than the breathing sine so it
-      // reads as a distinct, more urgent motion, not just a bigger wobble.
-      const proximity = Phaser.Math.Clamp(1 - distToFlame / BURNING.awareness.radius, 0, 1);
-      const unease = proximity > 0
-        ? Math.sin(t * BURNING.awareness.jitterRate + fuel.pulse * 7) * BURNING.awareness.jitterAmplitude * proximity
-        : 0;
-      fuel.visual.setScale(1 + Math.sin(t * 0.003 + fuel.pulse) * 0.06 + unease);
+      // on top of the existing idle-breathing sine -- distToFlame and
+      // contactRadius are already computed above for the cull/contact
+      // checks, reused here rather than duplicating them. The awareness
+      // radius tracks the *actual* contact radius (see burningData.ts's
+      // comment on BURNING.awareness.margin) so the trembling window's
+      // width stays constant regardless of tier/skill-bonus scaling,
+      // instead of collapsing to nothing at max contact radius. A faster
+      // frequency and a different fuel.pulse multiplier than the breathing
+      // sine so it reads as a distinct, more urgent motion, not just a
+      // bigger wobble.
+      const awarenessRadius = contactRadius + BURNING.awareness.margin;
+      const proximity = Phaser.Math.Clamp(1 - distToFlame / awarenessRadius, 0, 1);
+      const unease = Math.sin(t * BURNING.awareness.jitterRate + fuel.pulse * 7) * BURNING.awareness.jitterAmplitude * proximity;
+      // Clamped defensively: the breathing sine (±0.06) and unease (±0.05)
+      // are independent terms that can constructively peak on the same
+      // frame, which would otherwise silently widen the idle scale's old
+      // implicit [0.94, 1.06] range to roughly [0.89, 1.11] with no
+      // documented bound -- harmless today (nothing else reads this scale),
+      // but code review flagged it as exactly the kind of undocumented
+      // invariant a future consumer (hit-testing, screenshot-diff
+      // tolerance) could silently trip over.
+      fuel.visual.setScale(Phaser.Math.Clamp(1 + Math.sin(t * 0.003 + fuel.pulse) * 0.06 + unease, 0.85, 1.15));
       fuel.visual.setAlpha(ignitable ? 0.78 : 0.4);
       fuel.burnVisual.setAlpha(0);
       return;
