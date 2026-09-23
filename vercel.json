@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm install --prefix the-flame",
+  "buildCommand": "npm run build --prefix the-flame",
+  "outputDirectory": "the-flame/dist"
+}

@@ -1,6 +1,6 @@
 {
   "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
-  "postCreateCommand": "npm install",
+  "postCreateCommand": "npm install && npm install --prefix the-flame",
   "customizations": {
     "vscode": {
       "extensions": [
