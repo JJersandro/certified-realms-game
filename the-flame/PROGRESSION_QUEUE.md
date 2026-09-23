@@ -184,10 +184,45 @@ not flagged; only choices that change what the system *is* are.
       `[0.00032, 0.01632, 0.03232, 0.04832, 0.06432, 0.08032]` over 300 more frames, reaching
       `0.096` after ~4.8s -- matching the predicted net rate exactly (`0.096 / 4.8 ≈ 0.02 =
       0.18 - 0.16`). Heat stayed within `[0, GROWTH.maxHeat]` throughout, zero console errors.
-- [ ] **7. Tier-specific bonus choice ("Hunter" analog).** Let the player designate one matter
-      tier as a focus (small new state, not a currency) for a bonus (XP yield or contact radius
-      against that tier). OPEN DECISION: how the focus is chosen in-game (automatic? a UI
-      picker? tied to a Mastery threshold?).
+- [x] **7. Tier-specific bonus choice ("Hunter" analog).** Done 2026-09-23. Three decisions from
+      the project owner: (1) the focus is **automatic** (no UI picker, no threshold gating, so the
+      VISION.md HUD freeze is untouched); (2) it boosts **both** XP yield and contact radius, each
+      at a smaller magnitude; (3) it is derived from a **recent window**, not all-time totals. An
+      all-time "most burned tier" would lock onto kindling for the whole game (highest
+      spawnWeight, ignitable from level 1, and the bonus makes it easier still), and kindling has
+      the lowest xpFactor, so the bonus would do almost nothing. This was raised before building,
+      not discovered after.
+      Built:
+      - New `src/data/focusData.ts`: `FOCUS = { recentBurnWindow: 20, xpYieldBonus: 0.10,
+        contactRadiusBonus: 0.06 }`. Both bonuses sit under item 6's single-stat precedent. Radius
+        is lower because catchable area grows with r² (1.06² ≈ 1.12×).
+      - `MasteryTracker.recentBurnTiers`: a rolling buffer of the last 20 burned tier ids, which is
+        the "small new state" this item anticipated. It is filled by the existing `recordBurn()`,
+        so there is no new wiring.
+      - `MasteryTracker.focusedTierId()`: returns the plurality tier in that buffer, with ties going
+        to the lowest id, or `null` before the first burn. It is recomputed on every call.
+      - Threaded through `getFlame()` as `FlameSnapshot.focusedTierId`. It is gated per fuel at
+        both consumption sites in `MatterRegistry`: `finishBurn` (XP) and `updateFuel` (contact
+        radius), as an extra multiplicative factor on the existing formulas.
+      - The boosted contact radius also widens the focused tier's awareness-trembling window. That
+        is intended, so don't "fix" it.
+      - `tryCascade` is untouched (that's item 9).
+      - Balance-pass note: one large kindling cascade can flush the whole 20-burn window at once.
+      Verified: `tsc --noEmit`, `npm run lint`, `vite build` (1,140.75 kB / gzip 310.07 kB, +0.56
+      kB, no new deps) and Vitest (47/47, 7 new) all clean. The 7 new tests cover null before the
+      first burn, a plurality win, lowest-id tie-break regardless of order, window eviction
+      overtaking the all-time leader, the buffer cap, and out-of-range ids.
+      Plus a real headless Playwright pass via a temporary `window.__game` hook, fully reverted
+      before commit (`grep -n "__game"` returns no matches):
+      - Focus was `null` on a fresh scene.
+      - It flipped brush → kindling → brush (`[2,1,2]`) as burns went through the real
+        `finishBurn` → `onMasteryBurn` → `recordBurn` path.
+      - XP gate: with brush focused, a brush burn paid exactly `68.6 × 1.10 = 75.46`, while a
+        kindling burn stayed unboosted at `25`.
+      - Contact gate: three same-radius fuels sat 61.9px away, between the unboosted 60.1px and
+        the boosted 63.7px radius. The focused brush ignited. The other-tier kindling and a brush
+        with focus forced to `null` both stayed idle. Cascades were suppressed for isolation.
+      - Zero console errors.
 - [ ] **8. Bonus-chance burn ("Critical" analog).** A small, flat chance per ignition for a burn
       to yield a bonus (extra XP, or an instant-finish) -- reuses `ignite()`/`finishBurn()` in
       `MatterRegistry.ts`; needs its own `flame-visual-designer` feedback pass once real.

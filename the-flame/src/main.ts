@@ -128,6 +128,7 @@ class FlameScene extends Phaser.Scene {
           * (1 + this.skillTree.contactRadiusBonus()),
         cascadeChanceBonus: this.skillTree.cascadeChanceBonus(),
         xpYieldMultiplier: 1 + this.skillTree.xpYieldBonus(),
+        focusedTierId: this.mastery.focusedTierId(),
         heat: this.heat,
         stability: this.stability,
         // Camera-distance culling (BACKLOG.md [mobile-perf]: "a real,

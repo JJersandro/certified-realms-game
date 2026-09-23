@@ -5,6 +5,7 @@ import { GROWTH } from '../data/growthData';
 import { MATTER, MatterTier } from '../data/matterData';
 import { CHOICES } from '../data/choiceData';
 import { AUDIO } from '../data/audioData';
+import { FOCUS } from '../data/focusData';
 
 type BurnState = 'idle' | 'burning';
 
@@ -41,6 +42,12 @@ export type FlameSnapshot = {
   // getFlame() rather than reaching for a new Host callback.
   cascadeChanceBonus: number;
   xpYieldMultiplier: number;
+  // PROGRESSION_QUEUE.md item 7 ("Hunter" analog): MasteryTracker's
+  // recent-window focus tier, or null before the first burn. Kept separate
+  // from the two multipliers above because those apply to every fuel alike,
+  // while this bonus only applies where fuel.tier.id matches it -- see
+  // finishBurn() and updateFuel().
+  focusedTierId: number | null;
   // Movement/spread feedback slice (owner build plan, 2026-09-14): 0-1
   // current heat, same value already driving wobble/color/glow every frame
   // in FlameScene -- threaded through here so tryCascade() can read it too,
@@ -237,7 +244,8 @@ export class MatterRegistry {
     const baseXp = fuel.forcedBonus
       ? fuel.xpYield * CHOICES.riskyIgnition.xpBonusMultiplier
       : fuel.xpYield;
-    const xpYield = baseXp * flame.xpYieldMultiplier;
+    const focusXpMultiplier = fuel.tier.id === flame.focusedTierId ? 1 + FOCUS.xpYieldBonus : 1;
+    const xpYield = baseXp * flame.xpYieldMultiplier * focusXpMultiplier;
     this.host.onFuelBurned(xpYield);
     this.host.addHeat(fuel.r / 22);
     this.host.onBurnComplete(Phaser.Math.Clamp(fuel.r / maxFuelRadius, 0, 1));
@@ -288,7 +296,12 @@ export class MatterRegistry {
       }
 
       const ignitable = flame.level >= fuel.tier.minLevelToIgnite;
-      const contactRadius = (flame.size + fuel.r) * BURNING.contactRadiusMultiplier * flame.contactRadiusMultiplier;
+      // Item 7: the focused tier is easier to reach. This boosted radius also
+      // feeds the awareness-trembling window below (contactRadius + margin),
+      // so focused-tier fuel starts trembling a little further out --
+      // intended, not something to special-case away.
+      const focusRadiusMultiplier = fuel.tier.id === flame.focusedTierId ? 1 + FOCUS.contactRadiusBonus : 1;
+      const contactRadius = (flame.size + fuel.r) * BURNING.contactRadiusMultiplier * flame.contactRadiusMultiplier * focusRadiusMultiplier;
       const inContact = distToFlame < contactRadius;
 
       if(inContact && ignitable){

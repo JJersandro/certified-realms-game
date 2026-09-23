@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MasteryTracker } from '../MasteryTracker';
 import { MATTER } from '../../data/matterData';
 import { MASTERY } from '../../data/masteryData';
+import { FOCUS } from '../../data/focusData';
 
 describe('MasteryTracker initial state', () => {
   it('starts every counter at zero, with one burnsPerTier slot per MATTER tier', () => {
@@ -133,6 +134,74 @@ describe('MasteryTracker.addDistance', () => {
     mastery.addDistance(-5);
     mastery.addDistance(NaN);
     expect(mastery.distanceTraveled).toBe(10);
+  });
+});
+
+describe('MasteryTracker.focusedTierId -- item 7 recent-window focus', () => {
+  const kindling = MATTER[0].id;
+  const brush = MATTER[1].id;
+  const timber = MATTER[2].id;
+  const bone = MATTER[4].id;
+
+  it('is null before the first burn', () => {
+    const mastery = new MasteryTracker();
+    expect(mastery.focusedTierId()).toBeNull();
+  });
+
+  it('focuses the only tier burned so far', () => {
+    const mastery = new MasteryTracker();
+    mastery.recordBurn(timber);
+    expect(mastery.focusedTierId()).toBe(timber);
+  });
+
+  it('picks the most-burned tier within the window', () => {
+    const mastery = new MasteryTracker();
+    mastery.recordBurn(kindling);
+    for(let i = 0; i < 3; i++) mastery.recordBurn(brush);
+    for(let i = 0; i < 5; i++) mastery.recordBurn(bone);
+    expect(mastery.focusedTierId()).toBe(bone);
+  });
+
+  it('breaks a tie toward the lowest tier id, whichever was recorded first', () => {
+    const mastery = new MasteryTracker();
+    mastery.recordBurn(bone);
+    mastery.recordBurn(bone);
+    mastery.recordBurn(brush);
+    mastery.recordBurn(brush);
+    expect(mastery.focusedTierId()).toBe(brush);
+  });
+
+  it('evicts burns older than the window, so recent hunting overtakes an all-time leader', () => {
+    const mastery = new MasteryTracker();
+    for(let i = 0; i < FOCUS.recentBurnWindow; i++) mastery.recordBurn(kindling);
+    const half = FOCUS.recentBurnWindow / 2;
+    for(let i = 0; i < half; i++) mastery.recordBurn(timber);
+    // window is now half kindling, half timber -- tie goes to kindling
+    expect(mastery.focusedTierId()).toBe(kindling);
+
+    mastery.recordBurn(timber);
+    // one more timber evicts one more kindling -- timber leads the window
+    // even though kindling still leads all-time burnsPerTier
+    expect(mastery.focusedTierId()).toBe(timber);
+    expect(mastery.burnsPerTier[0]).toBeGreaterThan(mastery.burnsPerTier[2]);
+  });
+
+  it('never holds more than FOCUS.recentBurnWindow entries', () => {
+    const mastery = new MasteryTracker();
+    for(let i = 0; i < FOCUS.recentBurnWindow * 3; i++) mastery.recordBurn(MATTER[i % MATTER.length].id);
+    expect(mastery.recentBurnTiers).toHaveLength(FOCUS.recentBurnWindow);
+  });
+
+  it('ignores out-of-range tier ids', () => {
+    const mastery = new MasteryTracker();
+    mastery.recordBurn(0);
+    mastery.recordBurn(MATTER.length + 1);
+    expect(mastery.recentBurnTiers).toHaveLength(0);
+    expect(mastery.focusedTierId()).toBeNull();
+
+    mastery.recordBurn(brush);
+    mastery.recordBurn(0);
+    expect(mastery.focusedTierId()).toBe(brush);
   });
 });
 

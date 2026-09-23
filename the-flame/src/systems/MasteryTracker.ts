@@ -1,5 +1,6 @@
 import { MATTER } from '../data/matterData';
 import { MASTERY } from '../data/masteryData';
+import { FOCUS } from '../data/focusData';
 
 // PROGRESSION_QUEUE.md item 3: Mastery domain counters -- tracking-only for
 // now, no thresholds/rewards/UI yet (those are items 4/10/11). Narrow,
@@ -56,6 +57,11 @@ export class MasteryTracker {
   // own separate, later, one-at-a-time items.
   masteryPoints = 0;
 
+  // PROGRESSION_QUEUE.md item 7: tier ids of the last
+  // FOCUS.recentBurnWindow completed burns, oldest first -- the only input
+  // to focusedTierId() below.
+  recentBurnTiers: number[] = [];
+
   // tierId is MatterTier.id (1..MATTER.length), matching a burned fuel's
   // own fuel.tier.id -- guarded so an out-of-range id (shouldn't happen,
   // but this is the one place a bad id could silently grow/misindex the
@@ -74,6 +80,25 @@ export class MasteryTracker {
     if(index === 0 && this.burnsPerTier[0] === MASTERY.kindlingBurnThreshold){
       this.masteryPoints += MASTERY.kindlingBurnReward;
     }
+
+    this.recentBurnTiers.push(tierId);
+    if(this.recentBurnTiers.length > FOCUS.recentBurnWindow) this.recentBurnTiers.shift();
+  }
+
+  // Item 7 ("Hunter" analog): the tier burned most within the recent
+  // window, recomputed on every call (never cached) so it tracks what the
+  // player is hunting right now. Strict > while scanning ascending means a
+  // tie goes to the lowest tier id. null until the first burn -- no focus
+  // is earned before the flame has burned anything.
+  focusedTierId(): number | null {
+    if(this.recentBurnTiers.length === 0) return null;
+    const counts = new Array(MATTER.length).fill(0);
+    for(const tierId of this.recentBurnTiers) counts[tierId - 1]++;
+    let best = 0;
+    for(let i = 1; i < counts.length; i++){
+      if(counts[i] > counts[best]) best = i;
+    }
+    return best + 1;
   }
 
   recordCascadeTriggered(){
