@@ -149,6 +149,36 @@ was found and fixed stays visible.
       run's own math rather than a re-measurement; left as-is rather than edited since it's not
       wrong in effect and this file's job is verification, not comment copyediting. `tsc --noEmit`
       and `vite build` both clean throughout.
+- [ ] Cascade chains were nearly nonexistent; reach raised 3.5 -> 7.5 as a first step, density
+      still the real lever (found by flame-progression-architect, 2026-09-23) --
+      `matterData.ts` `cascadeRadiusMultiplier`, `worldData.ts` spawn.
+      - Measured for PROGRESSION_QUEUE.md item 9 on real spawned worlds, read-only on game
+        state. For each fuel as a source, neighbors within `r × M` give a chain-start
+        probability of `1 − (1 − cascadeChance)^k`.
+      - First run, 5 worlds:
+        - level 1: 1.06% / 1.76% / 2.26% / 3.15% / 4.34% at M = 3.5 / 4.5 / 5.5 / 6.5 / 7.5
+        - level 40: 2.53% / 4.03% / 5.75% / 8.00% / 10.86% at the same M values
+      - Deciding run, 10 worlds, level 40: 1.76% at 3.5, 6.63% at 6.5, 8.72% at 7.5.
+      - The pre-set rule ("lowest M with a level-40 rate ≥ 8%") picked 7.5. Expected branching
+        per chain link stays around 0.1, so chains can't snowball.
+      - Still open:
+        - Uniform spawning (about 90 fuels per 2000×1500 region) means reach alone gives only
+          about 4% of ignitions a chain at low levels.
+        - Clustering spawns, or per-tier reach (dry kindling spreading further than ore), would
+          make cascades a real mechanic.
+        - Item 9's chain XP bonus (`swarmData.ts`) scales directly with how often this fires.
+- [ ] Sustained fast play keeps heat above `RISK.overheatThreshold` about 90% of the time (found
+      by flame-progression-architect, 2026-09-23) -- `growthData.ts` heat gain/decay,
+      `MatterRegistry.ignite()` / burn heat.
+      - A scripted 60-second max-speed lawnmower sweep (4 worlds each) spent 90.49% of frames
+        at heat ≥ 0.85 with cascade reach 3.5, and 90.67% with 7.5. So the cascade change
+        didn't cause it.
+      - Cause: about 80 ignitions per minute, each adding 0.08 heat, plus
+        `heatRisePerBurnSecond` 0.42/s for every burning fuel, plus item 6's movement heat, all
+        against a 0.16/s decay.
+      - The flame ends the minute around level 1–3, so the overheat shrink is likely eating
+        progress during aggressive play. Needs a real flame-balance-tuner pass on heat sources
+        vs. decay; not changed here.
 
 ## [visual]
 

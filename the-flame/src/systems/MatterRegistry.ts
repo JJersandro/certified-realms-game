@@ -7,6 +7,7 @@ import { CHOICES } from '../data/choiceData';
 import { AUDIO } from '../data/audioData';
 import { FOCUS } from '../data/focusData';
 import { CRITICAL } from '../data/criticalData';
+import { SWARM } from '../data/swarmData';
 
 type BurnState = 'idle' | 'burning';
 
@@ -28,6 +29,9 @@ export type Fuel = {
   // PROGRESSION_QUEUE.md item 8: rolled in ignite(); a critical burn
   // finishes on its next updateFuel() pass (see there for why not sooner).
   critical: boolean;
+  // PROGRESSION_QUEUE.md item 9: set by rewardChain() on every member of a
+  // cascade chain, applied in finishBurn(). 1 for anything not in a chain.
+  chainXpMultiplier: number;
   visual: Phaser.GameObjects.Arc;
   burnVisual: Phaser.GameObjects.Arc;
 };
@@ -180,6 +184,7 @@ export class MatterRegistry {
       forceProgress: 0,
       forcedBonus: false,
       critical: false,
+      chainXpMultiplier: 1,
       visual,
       burnVisual
     });
@@ -207,21 +212,20 @@ export class MatterRegistry {
   // naturally bounded since ignite() is a no-op on anything not idle, so
   // each fuel enters this chain at most once.
   //
-  // Returns whether *this specific call* caught at least one further fuel --
-  // used by updateFuel()'s two call sites (below) to decide whether to
-  // report a Mastery "cascade triggered" event (PROGRESSION_QUEUE.md item
-  // 3). Deliberately counts once per chain-initiating ignition, not once
-  // per fuel a chain catches: the recursive `this.tryCascade(other, flame)`
-  // calls below are continuations of the same chain reaction, not new
-  // triggers, so their own return values are intentionally ignored here --
-  // only the outer call (from updateFuel, where a player-caused ignition
-  // starts the chain) is ever read by a caller that acts on it. A chain that
-  // catches zero fuel at its own immediate radius never happened at all for
-  // counting purposes, regardless of what a caught fuel's own recursion
-  // might otherwise have done.
-  private tryCascade(source: Fuel, flame: FlameSnapshot): boolean {
+  // Returns every fuel the whole chain caught (not including the source),
+  // accumulated into one shared array down the recursion. The entire chain
+  // resolves inside the outer call from updateFuel(): caught fuels are
+  // ignited here and never pass through updateFuel()'s idle branch again,
+  // so they never start a separate chain of their own.
+  //
+  // The outer callers read chain.length > 0 as "a cascade was triggered"
+  // (PROGRESSION_QUEUE.md item 3: counted once per chain, not once per fuel
+  // caught). Recursion only ever happens from a caught fuel, so the chain
+  // is non-empty exactly when the source's own immediate radius caught
+  // something -- the same meaning the old boolean return had. Item 9 uses
+  // the length to scale rewardChain()'s XP bonus.
+  private tryCascade(source: Fuel, flame: FlameSnapshot, chain: Fuel[] = []): Fuel[] {
     const radius = source.r * source.tier.cascadeRadiusMultiplier;
-    let caughtAny = false;
     for(const other of this.fuels){
       if(other === source || !other.alive || other.burnState !== 'idle') continue;
       if(flame.level < other.tier.minLevelToIgnite) continue;
@@ -235,11 +239,31 @@ export class MatterRegistry {
       const dist = Phaser.Math.Distance.Between(source.x, source.y, other.x, other.y);
       if(dist > radius) continue;
 
-      caughtAny = true;
+      chain.push(other);
       this.ignite(other);
-      this.tryCascade(other, flame);
+      this.tryCascade(other, flame, chain);
     }
-    return caughtAny;
+    return chain;
+  }
+
+  // The one entry point for a player-caused ignition's cascade (direct
+  // contact and risky hold both call this): counts the chain for Mastery
+  // (item 3) and rewards it (item 9).
+  private startChain(source: Fuel, flame: FlameSnapshot){
+    const chain = this.tryCascade(source, flame);
+    if(chain.length === 0) return;
+    this.host.onCascadeTriggered();
+    this.rewardChain(source, chain);
+  }
+
+  // Item 9 ("Swarm" analog): the source and every fuel its chain caught all
+  // burn for the same bonus, scaled by chain size. Runs synchronously right
+  // after tryCascade(), before any chain member's next updateFuel() pass --
+  // so even a critical member (item 8) that finishes on that pass is tagged.
+  private rewardChain(source: Fuel, chain: Fuel[]){
+    const multiplier = 1 + SWARM.xpBonusPerLink * Math.min(chain.length, SWARM.maxLinks);
+    source.chainXpMultiplier = multiplier;
+    for(const fuel of chain) fuel.chainXpMultiplier = multiplier;
   }
 
   finishBurn(fuel: Fuel, flame: FlameSnapshot){
@@ -251,7 +275,7 @@ export class MatterRegistry {
       ? fuel.xpYield * CHOICES.riskyIgnition.xpBonusMultiplier
       : fuel.xpYield;
     const focusXpMultiplier = fuel.tier.id === flame.focusedTierId ? 1 + FOCUS.xpYieldBonus : 1;
-    const xpYield = baseXp * flame.xpYieldMultiplier * focusXpMultiplier;
+    const xpYield = baseXp * flame.xpYieldMultiplier * focusXpMultiplier * fuel.chainXpMultiplier;
     this.host.onFuelBurned(xpYield);
     this.host.addHeat(fuel.r / 22);
     // Item 8: a critical burn gets the biggest existing burn flourish and
@@ -318,7 +342,7 @@ export class MatterRegistry {
       if(inContact && ignitable){
         fuel.forceProgress = 0;
         this.ignite(fuel);
-        if(this.tryCascade(fuel, flame)) this.host.onCascadeTriggered();
+        this.startChain(fuel, flame);
         return;
       }
 
@@ -345,7 +369,7 @@ export class MatterRegistry {
           // contact early just resets forceProgress to 0 above, penalty-free).
           this.host.onRiskyIgnitionSurvived();
           this.ignite(fuel);
-          if(this.tryCascade(fuel, flame)) this.host.onCascadeTriggered();
+          this.startChain(fuel, flame);
         }
         return;
       }

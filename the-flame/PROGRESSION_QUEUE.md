@@ -255,9 +255,44 @@ not flagged; only choices that change what the system *is* are.
       - Cascade: with the roll forced, all 4 fuels in a chain came out critical and all finished
         on the next `updateAll()` pass, with no mid-loop teardown errors.
       - Zero console errors.
-- [ ] **9. Cascade-scaling reward ("Swarm" analog).** A bonus (XP or Mastery-counter progress)
-      scaling with how many fuel instances a single cascade chain ignited, read off
-      `tryCascade()`'s existing recursion -- the cleanest one-to-one mapping in this queue.
+- [x] **9. Cascade-scaling reward ("Swarm" analog).** Done 2026-09-23.
+      Decisions from the project owner:
+      - Reward: a **chain XP bonus**, not Mastery Points.
+      - Rarity: the owner answered "**mix**". Read as: measure real chain rates, apply a
+        modest measured reach boost, build the reward, and log the deeper tuning. That reading
+        was stated before building.
+      The problem it solved: a real measurement found that only about 1% (level 1) / 2%
+      (level 40) of ignitions started any cascade at all, so a chain-size reward would almost
+      never fire.
+      Built:
+      - New `src/data/swarmData.ts`: `SWARM = { xpBonusPerLink: 0.10, maxLinks: 5 }`, so up to
+        +50%.
+      - `tryCascade()` now returns every fuel the chain caught (one shared array down the
+        recursion) instead of a boolean. `chain.length > 0` means exactly what the old boolean
+        meant, so item 3's "one `cascadesTriggered` per chain" is unchanged.
+      - New `startChain()`: the single entry point for both player-caused ignitions (contact and
+        risky hold). It counts the chain for Mastery and calls `rewardChain()`.
+      - `rewardChain()` tags the source and every member with
+        `chainXpMultiplier = 1 + 0.10 × min(size, 5)`, synchronously. So even item 8 critical
+        members that finish on their next pass get the bonus.
+      - `finishBurn()` multiplies XP by it, and it stacks with the other XP bonuses.
+      - `cascadeRadiusMultiplier` went from 3.5 to **7.5** on all 7 tiers. It was picked by a
+        rule fixed before measuring: the lowest M with a level-40 chain-start rate ≥ 8%. A
+        10-world deciding run gave 6.5 → 6.63% and 7.5 → 8.72%. Full numbers are in BACKLOG.md
+        [balance].
+      Verified: `tsc --noEmit`, `npm run lint`, `vite build` (1,141.16 kB, +0.26 kB, no new
+      deps) and Vitest (47/47, unchanged; no test asserts cascade reach) all clean.
+      Plus real headless Playwright passes via a temporary `window.__game` hook, fully reverted
+      before commit (`grep -n "__game"` returns no matches):
+      - **Heat guard:** a 60-second max-speed sweep over 4 worlds per setting spent 90.49% of
+        frames at heat ≥ 0.85 with reach 3.5 and 90.67% with 7.5, far from the "doubles → back
+        off" trigger. The ~90% itself is a separate, pre-existing issue logged in BACKLOG.
+      - **Chain of 3**, triggered through the real `updateFuel()` contact path with the fuels
+        isolated: all 4 got ×1.3, `cascadesTriggered` rose by exactly 1, and a member's XP went
+        from `25` to exactly `32.5`.
+      - **Chain of 7:** capped at ×1.5, with +1 cascade.
+      - **Failed rolls:** everything stayed ×1 and the cascade count did not move.
+      - Live tiers carry 7.5. Zero console errors.
 - [ ] **10. Mobility Mastery.** Distance-traveled counter (item 3) crossing thresholds awards
       Mastery Points, same pattern as item 4 but for the mobility counter.
 - [ ] **11. Risk Mastery.** Risky-ignitions-survived / worlds-cleared-without-shrinking-below-a-
