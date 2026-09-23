@@ -10,5 +10,19 @@
 // convention (this concern being "Mastery Points earn conditions").
 export const MASTERY = {
   kindlingBurnThreshold: 50,
-  kindlingBurnReward: 1
+  kindlingBurnReward: 1,
+
+  // Item 10 (Mobility Mastery): distanceTraveled crossing each of these
+  // (world pixels, ascending) awards distanceReward once. Escalating
+  // rather than evenly spaced because top speed grows ~6x over a run
+  // ((90 + flameSize*8) * tier speedMultiplier: ~218 px/s at the start,
+  // ~1,300 px/s at max size and tier), so each milestone stays a similar
+  // amount of play time apart. Measured: a flat-out early-game sweep covers
+  // ~17,400 px/min, so the first lands after ~1.5 minutes of fast movement
+  // -- sooner than item 4's 50-kindling milestone (~4.5 minutes in the same
+  // sweep, at ~11 kindling burns/min), which is fine for the one thing every
+  // player does from the first second. Conservative starting constants,
+  // real balance pass later.
+  distanceThresholds: [25000, 100000, 250000],
+  distanceReward: 1
 } as const;

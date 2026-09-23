@@ -119,6 +119,18 @@ export class MasteryTracker {
   // in practice, but this keeps the invariant explicit rather than assumed.
   addDistance(delta: number){
     if(!(delta > 0)) return;
+    const before = this.distanceTraveled;
     this.distanceTraveled += delta;
+
+    // Item 10: unlike burnsPerTier, distance grows by arbitrary amounts,
+    // so item 4's equality check can't work -- a threshold counts as
+    // crossed when this one delta carried the total from below it to at or
+    // above it. Distance only grows, so each threshold fires exactly once,
+    // and one large delta crossing several thresholds awards each of them.
+    for(const threshold of MASTERY.distanceThresholds){
+      if(before < threshold && this.distanceTraveled >= threshold){
+        this.masteryPoints += MASTERY.distanceReward;
+      }
+    }
   }
 }

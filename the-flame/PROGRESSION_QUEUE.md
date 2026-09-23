@@ -293,8 +293,42 @@ not flagged; only choices that change what the system *is* are.
       - **Chain of 7:** capped at ×1.5, with +1 cascade.
       - **Failed rolls:** everything stayed ×1 and the cascade count did not move.
       - Live tiers carry 7.5. Zero console errors.
-- [ ] **10. Mobility Mastery.** Distance-traveled counter (item 3) crossing thresholds awards
-      Mastery Points, same pattern as item 4 but for the mobility counter.
+- [x] **10. Mobility Mastery.** Done 2026-09-23.
+      Built:
+      - `MASTERY.distanceThresholds = [25000, 100000, 250000]` (world px, ascending) and
+        `MASTERY.distanceReward = 1`, added to `masteryData.ts` per that file's own
+        "one object per concern" note.
+      - Escalating rather than evenly spaced, because top speed grows ~6× over a run
+        (`(90 + flameSize × 8) × tier speedMultiplier`: ~218 px/s at the start, ~1,300 px/s
+        maxed).
+      - `MasteryTracker.addDistance()` awards on crossing: this one delta carried the total from
+        below a threshold to at or above it. Item 4's equality check can't work for distance,
+        which grows by arbitrary amounts. Distance only grows, so each threshold fires exactly
+        once, and one big delta crossing several awards each.
+      - Existing callers are unchanged (`FlameScene.update()` already feeds `addDistance`).
+      - No UI, per item 4's precedent. Points stay invisible until item 12 makes them spendable.
+      Verified: `tsc --noEmit`, `npm run lint`, `vite build` (1,141.36 kB, +0.2 kB) and Vitest
+      (55/55, 8 new) all clean. The new tests cover:
+      - thresholds positive and strictly ascending
+      - exactly once on crossing, not before
+      - landing exactly on a threshold counts
+      - no re-award below the next threshold
+      - one huge delta awards all thresholds
+      - many small steps award the same total
+      - rejected deltas never award
+      - stacking with item 4's kindling point
+      Plus a real headless Playwright pass through `FlameScene.update()` → `addDistance()` via a
+      temporary `window.__game` hook, fully reverted before commit (`grep -n "__game"` returns
+      no matches):
+      - A flat-out early-game sweep covered **17,367 px/min**. So the first milestone lands after
+        ~1.5 minutes of fast movement, sooner than item 4's 50-kindling milestone (~4.5 minutes;
+        the same sweep burned 11 kindling/min). The `masteryData.ts` comment was corrected to
+        these measured numbers.
+      - Crossing 25k and 250k through real movement each awarded exactly 1 point, on the
+        crossing frame. This ran with kindling pushed past its threshold so item 4 couldn't
+        fire.
+      - 600 frames between thresholds awarded 0.
+      - Zero console errors.
 - [ ] **11. Risk Mastery.** Risky-ignitions-survived / worlds-cleared-without-shrinking-below-a-
       stability-threshold counters reward Mastery Points for engaging with the risk system
       skillfully, not just avoiding it.

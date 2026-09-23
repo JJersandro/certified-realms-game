@@ -137,6 +137,67 @@ describe('MasteryTracker.addDistance', () => {
   });
 });
 
+describe('MasteryTracker.addDistance -- item 10 Mobility Mastery thresholds', () => {
+  const [first, second] = MASTERY.distanceThresholds;
+  const all = MASTERY.distanceThresholds.length;
+
+  it('thresholds are positive and strictly ascending', () => {
+    MASTERY.distanceThresholds.forEach((threshold, i) => {
+      expect(threshold).toBeGreaterThan(i === 0 ? 0 : MASTERY.distanceThresholds[i - 1]);
+    });
+  });
+
+  it('awards exactly once when the first threshold is crossed, not before', () => {
+    const mastery = new MasteryTracker();
+    mastery.addDistance(first - 1);
+    expect(mastery.masteryPoints).toBe(0);
+    mastery.addDistance(2);
+    expect(mastery.masteryPoints).toBe(MASTERY.distanceReward);
+  });
+
+  it('landing exactly on a threshold counts as crossing it', () => {
+    const mastery = new MasteryTracker();
+    mastery.addDistance(first);
+    expect(mastery.masteryPoints).toBe(MASTERY.distanceReward);
+  });
+
+  it('does not award again for further distance below the next threshold', () => {
+    const mastery = new MasteryTracker();
+    mastery.addDistance(first);
+    for(let i = 0; i < 100; i++) mastery.addDistance((second - first - 1) / 100);
+    expect(mastery.masteryPoints).toBe(MASTERY.distanceReward);
+  });
+
+  it('a single delta crossing every threshold awards each of them once', () => {
+    const mastery = new MasteryTracker();
+    mastery.addDistance(MASTERY.distanceThresholds[all - 1] * 10);
+    expect(mastery.masteryPoints).toBe(all * MASTERY.distanceReward);
+  });
+
+  it('many small steps across every threshold award the same total', () => {
+    const mastery = new MasteryTracker();
+    const last = MASTERY.distanceThresholds[all - 1];
+    for(let d = 0; d < last + 1000; d += 997) mastery.addDistance(997);
+    expect(mastery.masteryPoints).toBe(all * MASTERY.distanceReward);
+  });
+
+  it('rejected deltas never award', () => {
+    const mastery = new MasteryTracker();
+    mastery.addDistance(first - 1);
+    mastery.addDistance(-5000);
+    mastery.addDistance(NaN);
+    mastery.addDistance(0);
+    expect(mastery.masteryPoints).toBe(0);
+  });
+
+  it('stacks with the item 4 kindling reward in the same masteryPoints total', () => {
+    const mastery = new MasteryTracker();
+    for(let i = 0; i < MASTERY.kindlingBurnThreshold; i++) mastery.recordBurn(MATTER[0].id);
+    mastery.addDistance(first);
+    expect(mastery.masteryPoints).toBe(MASTERY.kindlingBurnReward + MASTERY.distanceReward);
+  });
+});
+
 describe('MasteryTracker.focusedTierId -- item 7 recent-window focus', () => {
   const kindling = MATTER[0].id;
   const brush = MATTER[1].id;
