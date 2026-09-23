@@ -223,9 +223,38 @@ not flagged; only choices that change what the system *is* are.
         the boosted 63.7px radius. The focused brush ignited. The other-tier kindling and a brush
         with focus forced to `null` both stayed idle. Cascades were suppressed for isolation.
       - Zero console errors.
-- [ ] **8. Bonus-chance burn ("Critical" analog).** A small, flat chance per ignition for a burn
-      to yield a bonus (extra XP, or an instant-finish) -- reuses `ignite()`/`finishBurn()` in
-      `MatterRegistry.ts`; needs its own `flame-visual-designer` feedback pass once real.
+- [x] **8. Bonus-chance burn ("Critical" analog).** Done 2026-09-23. Decision from the project
+      owner: **instant-finish**, not bonus XP. A critical burn completes on its next frame
+      instead of draining over seconds (an embercore normally takes ~7s), for its normal XP. It
+      is a felt effect rather than another number, unlike items 6 and 7.
+      Built:
+      - New `src/data/criticalData.ts`: `CRITICAL = { chance: 0.08 }`, about 1 in 12 ignitions.
+      - New `Fuel.critical` flag, rolled in `ignite()`. That is the single choke point for every
+        ignition path (contact, risky hold, cascade link), so a cascade can pop several at once.
+      - The finish happens in `updateFuel()`'s burning branch on the fuel's first burning pass,
+        **not inside `ignite()`**. `ignite()` runs inside `tryCascade()`'s loop over
+        `this.fuels`, and `finishBurn()` destroys visuals, so finishing there would tear fuels down
+        mid-iteration. The cost is at most one frame.
+      - XP is untouched. Risky-ignition, skill-tree and item 7 focus bonuses all still apply.
+      - A critical burn skips its burn-time heat but keeps `finishBurn()`'s flat heat, so it runs
+        the flame very slightly cooler.
+      - Stopgap cue in the existing visual language: a crit fires the biggest burn flourish
+        (`onBurnComplete` intensity 1, already reduced-motion-scaled) and the max ember burst.
+        There is no HUD, audio or new visual change. **This item's own `flame-visual-designer`
+        feedback pass is still owed.**
+      Verified: `tsc --noEmit`, `npm run lint`, `vite build` (1,140.90 kB, +0.15 kB, no new deps)
+      and Vitest (47/47, unchanged; MatterRegistry has no unit tests, same as item 7) all clean.
+      Plus a real headless Playwright pass via a temporary `window.__game` hook, fully reverted
+      before commit (`grep -n "__game"` returns no matches). The scene was paused so organic play
+      couldn't interfere.
+      - Roll rate over 5,000 real `ignite()` calls was 7.22%, inside the pre-set ±3σ band
+        (6.85–9.15%) around 8%.
+      - A forced crit was dead after one `updateFuel` tick. It paid exactly the normal XP (36) and
+        fired intensity `1` instead of its size-based 0.25.
+      - A forced non-crit was still burning after one tick, at 95% hp.
+      - Cascade: with the roll forced, all 4 fuels in a chain came out critical and all finished
+        on the next `updateAll()` pass, with no mid-loop teardown errors.
+      - Zero console errors.
 - [ ] **9. Cascade-scaling reward ("Swarm" analog).** A bonus (XP or Mastery-counter progress)
       scaling with how many fuel instances a single cascade chain ignited, read off
       `tryCascade()`'s existing recursion -- the cleanest one-to-one mapping in this queue.

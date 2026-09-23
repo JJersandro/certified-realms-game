@@ -6,6 +6,7 @@ import { MATTER, MatterTier } from '../data/matterData';
 import { CHOICES } from '../data/choiceData';
 import { AUDIO } from '../data/audioData';
 import { FOCUS } from '../data/focusData';
+import { CRITICAL } from '../data/criticalData';
 
 type BurnState = 'idle' | 'burning';
 
@@ -24,6 +25,9 @@ export type Fuel = {
   // CHOICES.riskyIgnition.holdMs force-ignites at a cost (see updateFuel).
   forceProgress: number;
   forcedBonus: boolean;
+  // PROGRESSION_QUEUE.md item 8: rolled in ignite(); a critical burn
+  // finishes on its next updateFuel() pass (see there for why not sooner).
+  critical: boolean;
   visual: Phaser.GameObjects.Arc;
   burnVisual: Phaser.GameObjects.Arc;
 };
@@ -175,6 +179,7 @@ export class MatterRegistry {
       burnState: 'idle',
       forceProgress: 0,
       forcedBonus: false,
+      critical: false,
       visual,
       burnVisual
     });
@@ -188,6 +193,7 @@ export class MatterRegistry {
     // extra cascade-specific sound.
     this.host.onIgnite();
     fuel.burnState = 'burning';
+    fuel.critical = Math.random() < CRITICAL.chance;
     fuel.visual.setAlpha(0.42);
     fuel.burnVisual.setAlpha(BURNING.burnPulse.alpha);
     fuel.burnVisual.setScale(0.75);
@@ -248,7 +254,10 @@ export class MatterRegistry {
     const xpYield = baseXp * flame.xpYieldMultiplier * focusXpMultiplier;
     this.host.onFuelBurned(xpYield);
     this.host.addHeat(fuel.r / 22);
-    this.host.onBurnComplete(Phaser.Math.Clamp(fuel.r / maxFuelRadius, 0, 1));
+    // Item 8: a critical burn gets the biggest existing burn flourish and
+    // ember burst regardless of size -- a stopgap cue in the game's existing
+    // visual language until the item's own flame-visual-designer pass.
+    this.host.onBurnComplete(fuel.critical ? 1 : Phaser.Math.Clamp(fuel.r / maxFuelRadius, 0, 1));
     // Mastery burns-per-tier (PROGRESSION_QUEUE.md item 3): this is the
     // point a burn actually completes, same as the onFuelBurned/
     // onBurnComplete calls right above -- fuel.tier is still the same
@@ -257,7 +266,9 @@ export class MatterRegistry {
     this.host.onMasteryBurn(fuel.tier.id);
 
     this.host.particles.setPosition(fuel.x, fuel.y);
-    this.host.particles.explode(Phaser.Math.Clamp(Math.floor(fuel.r * 2.2), BURNING.emberBurst.min, BURNING.emberBurst.max));
+    this.host.particles.explode(fuel.critical
+      ? BURNING.emberBurst.max
+      : Phaser.Math.Clamp(Math.floor(fuel.r * 2.2), BURNING.emberBurst.min, BURNING.emberBurst.max));
 
     const scorch = this.host.scene.add.circle(
       fuel.x,
@@ -367,6 +378,16 @@ export class MatterRegistry {
       fuel.visual.setScale(Phaser.Math.Clamp(1 + Math.sin(t * 0.003 + fuel.pulse) * 0.06 + unease, 0.85, 1.15));
       fuel.visual.setAlpha(ignitable ? 0.78 : 0.4);
       fuel.burnVisual.setAlpha(0);
+      return;
+    }
+
+    // Item 8: a critical burn finishes here, on its first burning pass,
+    // not inside ignite() itself -- ignite() runs inside tryCascade()'s
+    // loop over this.fuels, and finishBurn() destroys visuals, so finishing
+    // there would tear fuels down mid-iteration. This costs at most one
+    // frame.
+    if(fuel.critical){
+      this.finishBurn(fuel, flame);
       return;
     }
 
